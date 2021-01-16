@@ -126,13 +126,7 @@ def nhl_games_date(date: dt.datetime) -> List[NhlGame]:
 
         games.append(game)
 
-
+    return games
 
 if __name__ == '__main__':
-    dates = get_nhl_dates(20192020)
-
-    games = []
-    
-    for d in dates:
-        nhl_games_date(d)
-        games += games
+    sys.exit()
