@@ -2,9 +2,9 @@
 from bs4 import BeautifulSoup
 import datetime as dt
 import json
-import pickle
 import requests
-import sys
+from urllib3.util.retry import Retry
+from requests.adapters import HTTPAdapter
 from typing import List
 
 class NhlTeam:
@@ -21,6 +21,10 @@ class NhlTeam:
             game id to identify the game
         team: str
             team abbreviation
+        is_home_team: boolean
+            True if team is home
+        home_team_win: boolean
+            True if the home team won
         goals: int
             goals scored
         pim: int
@@ -43,15 +47,21 @@ class NhlTeam:
             giveaways
         hits: int
             hits
-
+        goalie_id: int
+            goalie id
+        goalie_name: str
+            goalie name
         """
 
-    def __init__(self, date: dt.datetime, game_id: int, team: str, goals: int, pim: int, shots: int,
-                 powerPlayPercentage: float, powerPlayGoals: int, powerPlayOpportunities: int,
-                 faceOffWinPercentage: float, blocked: int, takeaways: int, giveaways: int, hits: int):
+    def __init__(self, date: dt.datetime, game_id: int, team: str, is_home_team: bool, home_team_win: bool,
+                 goals: int, pim: int, shots: int, powerPlayPercentage: float, powerPlayGoals: int,
+                 powerPlayOpportunities: int, faceOffWinPercentage: float, blocked: int, takeaways: int,
+                 giveaways: int, hits: int, goalie_id: int, goalie_name: str):
         self.date = date
         self.game_id = game_id
         self.team = team
+        self.is_home_team = is_home_team
+        self.home_team_win = home_team_win
         self.goals = goals
         self.pim = pim
         self.shots = shots
@@ -63,6 +73,87 @@ class NhlTeam:
         self.takeaways = takeaways
         self.giveaways = giveaways
         self.hits = hits
+        self.goalie_id = goalie_id
+        self.goalie_name = goalie_name
+
+class NhlGoalie:
+    """
+        represents a game played in the nhl by 1 goalie
+
+        ...
+
+        Parameters
+        ----------
+        date: dt.datetime
+            date on which the game was played
+        game_id: int
+            game id to identify the game
+        team: str
+            team abbreviation
+        is_home_team: boolean
+            True if team is home
+        goalie_name: str
+            goalie name
+        goalie_id: int
+            goalie id
+        timeOnIce: str
+            time on ice for the goalie
+        assists: int
+            assists
+        goals: int
+            goals
+        pim: int
+            penalties in minutes
+        shots: int
+            shots faced
+        saves: int
+            saves
+        powerPlaySaves: int
+            saves while goalies team was on the penalty kill
+        shortHandedSaves: int
+            saves while goalies team was on the powerplay
+        evenSaves: int
+            evenstrength saves
+        shortHandedShotsAgainst: int
+            shots faced while goalies team was on the powerplay
+        evenShotsAgainst: int
+            shots faced during evenstrength
+        powerPlayShotsAgainst: int
+            shots faces while goalies team was on the penalty kill
+        decision: str
+            W if goalie won L if goalie lost
+        savePercentage: float
+            goalie save percentage
+        evenStrengthSavePercentage: float
+            save percentage during even strength
+        """
+
+    def __init__(self, date: dt.datetime, game_id: int, team: str, is_home_team: bool, goalie_name: str,
+                 goalie_id: int, timeOnIce: str, assists: int, goals: int, pim: int, shots: int,
+                 saves: int, powerPlaySaves: int, shortHandedSaves: int, evenSaves: int,
+                 shortHandedShotsAgainst: int, evenShotsAgainst: int, powerPlayShotsAgainst: int,
+                 decision: str, savePercentage: float, evenStrengthSavePercentage: float):
+        self.date = date
+        self.game_id = game_id
+        self.team = team
+        self.is_home_team = is_home_team
+        self.goalie_id = goalie_id
+        self.goalie_name = goalie_name
+        self.timeOnIce = timeOnIce
+        self.assists = assists
+        self.goals = goals
+        self.pim = pim
+        self.shots = shots
+        self.saves = saves
+        self.powerPlaySaves = powerPlaySaves
+        self.shortHandedSaves = shortHandedSaves
+        self.evenSaves = evenSaves
+        self.shortHandedShotsAgainst = shortHandedShotsAgainst
+        self.evenShotsAgainst = evenShotsAgainst
+        self.powerPlayShotsAgainst = powerPlayShotsAgainst
+        self.decision = decision
+        self.savePercentage = savePercentage
+        self.evenStrengthSavePercentage = evenStrengthSavePercentage
 
 def get_game_ids(season: int) -> List[int]:
     """
@@ -80,8 +171,8 @@ def get_game_ids(season: int) -> List[int]:
     game_ids: List[int]
         list of game ids for the specified season
     """
-    season_str = str(season)
-    url = f"https://statsapi.web.nhl.com/api/v1/schedule?season={season_str}&gameType=R"
+    season_str: str = str(season)
+    url: str = f"https://statsapi.web.nhl.com/api/v1/schedule?season={season_str}&gameType=R"
     resp = requests.get(url)
     raw_schedule = json.loads(resp.text)
     schedule = raw_schedule['dates']
@@ -99,10 +190,107 @@ def get_game_ids(season: int) -> List[int]:
             game_ids.append(game_id)
     return game_ids
 
-def retrieve_stats(game_id: int) -> List[NhlTeam]:
+def scrape_team_stats(game_id: int) -> List[NhlTeam]:
     """
-        returns two entires in a List. The firs entry is for the home team and the second is the away team.
+        returns two entries in a List. The first entry is for the home team and the second is the away team.
         Each entry represents 1 game played.
+
+        Refer to: https://github.com/dword4/nhlapi on how to use the NHL API
+
+        ...
+
+        Parameters
+        ----------
+        game_id: int
+            game id we are retrieving data for
+
+        Returns
+        -------
+        teams: List[NhlTeam]
+            list containing an entry for the home team and away team playing in the same game
+        """
+
+    # set max retry requests with a back off strategy
+    retries = Retry(total=5,
+                    backoff_factor=0.1,
+                    status_forcelist=[500, 502, 503, 504])
+    
+
+    url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
+    resp = requests.get(url)
+    json_data = json.loads(resp.text)
+
+    # RETRIEVE STATS REQUIRED
+
+    # retrieve date and convert to date time
+    game_date: str = json_data['gameData']['datetime']['dateTime']
+    game_date = dt.datetime.strptime(game_date, '%Y-%m-%dT%H:%M:%SZ')
+
+    # Retrieve team names
+    home_team: str = json_data["liveData"]['boxscore']['teams']['home']['team']['abbreviation']
+    away_team: str = json_data["liveData"]['boxscore']['teams']['away']['team']['abbreviation']
+
+    # Collect list of teamSkaterStats we want to retrieve from json data
+    team_skater_stats_home = json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']
+    team_skater_stats_away = json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']
+
+    # Starting goalies
+    # spot checked a few APIs and it seems like the starting goalie will be listed last in the json
+    # file if he was pulled. The goalie that finishes the game will be listed first (0).
+    home_team_starting_goalie_id = json_data["liveData"]['boxscore']['teams']['home']['goalies'][-1]
+    away_team_starting_goalie_id = json_data["liveData"]['boxscore']['teams']['away']['goalies'][-1]
+    home_team_starting_goalie_name = json_data["liveData"]['boxscore']['teams']['home']['players']['ID'+str(home_team_starting_goalie_id)]['person']['fullName']
+    away_team_starting_goalie_name = json_data["liveData"]['boxscore']['teams']['away']['players']['ID'+str(away_team_starting_goalie_id)]['person']['fullName']
+
+    # retrieve outcome (same for both home team and away team)
+    if json_data['liveData']['linescore']['hasShootout']==False:
+        if json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']['goals'] > json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']['goals']:
+            home_team_win = True
+        if json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']['goals'] < json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']['goals']:
+            home_team_win = False
+    if json_data['liveData']['linescore']['hasShootout']==True:
+        if json_data['liveData']['linescore']['shootoutInfo']['home']['scores'] > json_data['liveData']['linescore']['shootoutInfo']['away']['scores']:
+            home_team_win = True
+        if json_data['liveData']['linescore']['shootoutInfo']['home']['scores'] < json_data['liveData']['linescore']['shootoutInfo']['away']['scores']:
+            home_team_win = False
+
+    # create NhlTeam objects for the home and away team
+    home_team_stats = NhlTeam(date=game_date, game_id=game_id,
+                              team=home_team, is_home_team=True, home_team_win=home_team_win,
+                              goals=team_skater_stats_home['goals'],
+                              pim=team_skater_stats_home['pim'], shots=team_skater_stats_home['shots'],
+                              powerPlayPercentage=team_skater_stats_home['powerPlayPercentage'],
+                              powerPlayGoals=team_skater_stats_home['powerPlayGoals'],
+                              powerPlayOpportunities=team_skater_stats_home['powerPlayOpportunities'],
+                              faceOffWinPercentage=team_skater_stats_home['faceOffWinPercentage'],
+                              blocked=team_skater_stats_home['blocked'],
+                              takeaways=team_skater_stats_home['takeaways'],
+                              giveaways=team_skater_stats_home['giveaways'],
+                              hits=team_skater_stats_home['hits'], goalie_id=home_team_starting_goalie_id,
+                              goalie_name=home_team_starting_goalie_name)
+
+    away_team_stats = NhlTeam(date=game_date, game_id=game_id,
+                              team=away_team, is_home_team=False, home_team_win=home_team_win,
+                              goals=team_skater_stats_away['goals'],
+                              pim=team_skater_stats_away['pim'], shots=team_skater_stats_away['shots'],
+                              powerPlayPercentage=team_skater_stats_away['powerPlayPercentage'],
+                              powerPlayGoals=team_skater_stats_away['powerPlayGoals'],
+                              powerPlayOpportunities=team_skater_stats_away['powerPlayOpportunities'],
+                              faceOffWinPercentage=team_skater_stats_away['faceOffWinPercentage'],
+                              blocked=team_skater_stats_away['blocked'],
+                              takeaways=team_skater_stats_away['takeaways'],
+                              giveaways=team_skater_stats_away['giveaways'],
+                              hits=team_skater_stats_away['hits'], goalie_id=away_team_starting_goalie_id,
+                              goalie_name=away_team_starting_goalie_name)
+
+    teams = [home_team_stats, away_team_stats]
+
+    return teams
+
+def scrape_goalie_stats(game_id: int) -> List[NhlGoalie]:
+    """
+        retrieves a list of NhlGoalie containing goalie stats for all goalies that played in the game
+        specified by game_id
 
         Refer to: https://github.com/dword4/nhlapi on how to use the NHL API
 
@@ -125,91 +313,260 @@ def retrieve_stats(game_id: int) -> List[NhlTeam]:
 
     # RETRIEVE STATS REQUIRED
 
-    # Retrieve team names
-    home_team = json_data["liveData"]['boxscore']['teams']['home']['team']['abbreviation']
-    away_team = json_data["liveData"]['boxscore']['teams']['away']['team']['abbreviation']
+    # get date
+    game_date = json_data['gameData']['datetime']['dateTime']
+    game_date = dt.datetime.strptime(game_date, '%Y-%m-%dT%H:%M:%SZ')
 
-    # Collect list of teamSkaterStats we want to retrieve from json data
-    team_skater_stats_home = json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']
-    team_skater_stats_away = json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']
+    # Get goalie team
+    home_goalie_team = json_data['gameData']['teams']['home']['abbreviation']
+    away_goalie_team = json_data['gameData']['teams']['away']['abbreviation']
 
-    # Starting goalies
-    # I spot checked a few APIs and it seems like the starting goalie will be listed last in the json
-    # file if he was pulled. The goalie that finishes the game will be listed first (0).
-    home_team_starting_goalie_id = json_data["liveData"]['boxscore']['teams']['home']['goalies'][-1]
-    away_team_starting_goalie_id = json_data["liveData"]['boxscore']['teams']['away']['goalies'][-1]
-    home_team_starting_goalie_name = json_data["liveData"]['boxscore']['teams']['home']['players']['ID'+str(home_team_starting_goalie_id)]['person']['fullName']
-    away_team_starting_goalie_name = json_data["liveData"]['boxscore']['teams']['away']['players']['ID'+str(away_team_starting_goalie_id)]['person']['fullName']
+    # Get goalie IDs
+    home_goalie_id = json_data['liveData']['boxscore']['teams']['home']['goalies']
+    away_goalie_id = json_data['liveData']['boxscore']['teams']['away']['goalies']
 
-    # Add Game ID, team names, starting goalies and date to home_skater_stats dictionary
-    home_team_stats = NhlTeam(date=json_data['gameData']['datetime']['dateTime'], game_id=game_id,
-                              team=home_team, goals=team_skater_stats_home['goals'],
-                              pim=team_skater_stats_home['pim'], shots=team_skater_stats_home['shots'],
-                              powerPlayPercentage=team_skater_stats_home['powerPlayPercentage'],
-                              powerPlayGoals=team_skater_stats_home['powerPlayGoals'],
-                              powerPlayOpportunities=team_skater_stats_home['powerPlayOpportunities'],
-                              faceOffWinPercentage=team_skater_stats_home['faceOffWinPercentage'],
-                              blocked=team_skater_stats_home['blocked'],
-                              takeaways=team_skater_stats_home['takeaways'],
-                              giveaways=team_skater_stats_home['giveaways'],
-                              hits=team_skater_stats_home['hits'])
-    team_skater_stats_home["Game ID"] = game_id
-    team_skater_stats_home["Team"] = home_team
-    team_skater_stats_home["Date"] = json_data['gameData']['datetime']['dateTime']
-    team_skater_stats_home["Starting Goalie ID"] = home_team_starting_goalie_id
-    team_skater_stats_home['Starting Goalie Name'] = home_team_starting_goalie_name
-    team_skater_stats_home['Is Home Team'] = True
+    # Get goalie names
+    home_goalie_names = []
+    away_goalie_names = []
 
-    # Retrieve outcome
-    if json_data['liveData']['linescore']['hasShootout']==False:
-        if json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']['goals'] > json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']['goals']:
-            team_skater_stats_home['Home Team Win']=True
-        if json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']['goals'] < json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']['goals']:
-            team_skater_stats_home['Home Team Win']=False
-    if json_data['liveData']['linescore']['hasShootout']==True:
-        if json_data['liveData']['linescore']['shootoutInfo']['home']['scores'] > json_data['liveData']['linescore']['shootoutInfo']['away']['scores']:
-            team_skater_stats_home['Home Team Win'] = True
-        if json_data['liveData']['linescore']['shootoutInfo']['home']['scores'] < json_data['liveData']['linescore']['shootoutInfo']['away']['scores']:
-            team_skater_stats_home['Home Team Win'] = False
+    for i in home_goalie_id: # for loop to iterate through list of home goalies that played this game
+        j = json_data['liveData']['boxscore']['teams']['home']['players']['ID' + str(i)]['person']['fullName']
+        home_goalie_names.append(j)
+    for i in away_goalie_id: # for loop to iterate through list of away goalies that played this game
+        j = json_data['liveData']['boxscore']['teams']['away']['players']['ID' + str(i)]['person']['fullName']
+        away_goalie_names.append(j)
 
-    home_stats_dict = team_skater_stats_home
+    # Get goalie stats
+    home_goalie_stats = []
+    away_goalie_stats = []
+    for i in home_goalie_id: # for loop to iterate through list of home goalies that played this game
+        j = json_data['liveData']['boxscore']['teams']['home']['players']['ID' + str(i)]['stats']['goalieStats']
+        home_goalie_stats.append(j)
+    for i in away_goalie_id: # for loop to iterate through list of home goalies that played this game
+        j = json_data['liveData']['boxscore']['teams']['away']['players']['ID' + str(i)]['stats']['goalieStats']
+        away_goalie_stats.append(j)
 
-    # Add Game ID, team names, starting goalies and date to away_skater_stats dictionary
-    team_skater_stats_away["Game ID"] = game_id
-    team_skater_stats_away["Team"] = away_team
-    team_skater_stats_away["Date"] = json_data['gameData']['datetime']['dateTime']
-    team_skater_stats_away["Starting Goalie ID"] = away_team_starting_goalie_id
-    team_skater_stats_away['Starting Goalie Name'] = away_team_starting_goalie_name
-    team_skater_stats_away['Is Home Team'] = False
-    # Retrieve outcome
-    if json_data['liveData']['linescore']['hasShootout'] == False:
-        if json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']['goals'] > \
-                json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']['goals']:
-            team_skater_stats_away['Home Team Win'] = True
-        if json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']['goals'] < \
-                json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']['goals']:
-            team_skater_stats_away['Home Team Win'] = False
-    if json_data['liveData']['linescore']['hasShootout'] == True:
-        if json_data['liveData']['linescore']['shootoutInfo']['home']['scores'] > json_data['liveData']['linescore']['shootoutInfo']['away']['scores']:
-            team_skater_stats_away['Home Team Win'] = True
-        if json_data['liveData']['linescore']['shootoutInfo']['home']['scores'] < json_data['liveData']['linescore']['shootoutInfo']['away']['scores']:
-            team_skater_stats_away['Home Team Win'] = False
+    # make home goalie list. for loop needed as there could be more than 2 goalies playing in 1 game
+    home_goalies = []
+    counter = list(range(len(home_goalie_stats))) # counter for number of goalies that played
 
-    away_stats_dict = team_skater_stats_away
+    for g in counter:
+        goalie_stats = NhlGoalie(date=game_date, game_id=game_id, team=home_goalie_team, is_home_team=True,
+                                 goalie_name=home_goalie_names[g], goalie_id=home_goalie_id[g],
+                                 timeOnIce=home_goalie_stats[g]['timeOnIce'],
+                                 assists=home_goalie_stats[g]['assists'], goals=home_goalie_stats[g]['goals'],
+                                 pim=home_goalie_stats[g]['pim'], shots=home_goalie_stats[g]['shots'],
+                                 saves=home_goalie_stats[g]['saves'],
+                                 powerPlaySaves=home_goalie_stats[g]['powerPlaySaves'],
+                                 shortHandedSaves=home_goalie_stats[g]['shortHandedSaves'],
+                                 evenSaves=home_goalie_stats[g]['evenSaves'],
+                                 shortHandedShotsAgainst=home_goalie_stats[g]['shortHandedShotsAgainst'],
+                                 evenShotsAgainst=home_goalie_stats[g]['evenShotsAgainst'],
+                                 powerPlayShotsAgainst=home_goalie_stats[g]['powerPlayShotsAgainst'],
+                                 decision=home_goalie_stats[g]['decision'],
+                                 savePercentage=home_goalie_stats[g]['savePercentage'],
+                                 evenStrengthSavePercentage=home_goalie_stats[g]['evenStrengthSavePercentage'])
+        home_goalies.append(goalie_stats)
 
-    # Rename dictionary keys with "Home" and "Away"
-    #for i in team_skater_stats_home.keys():
-        #team_skater_stats_home['Home '+str(i)] = team_skater_stats_home.pop(i)
+    # make away goalie list. for loop needed as there could be more than 2 goalies playing in 1 game
+    away_goalies = []
+    counter = list(range(len(away_goalie_stats))) # counter for number of goalies that played
 
-    #for i in team_skater_stats_away.keys():
-        #team_skater_stats_away['Away ' + str(i)] = team_skater_stats_away.pop(i)
+    for g in counter:
+        goalie_stats = NhlGoalie(date=game_date, game_id=game_id, team=away_goalie_team, is_home_team=False,
+                                 goalie_name=away_goalie_names[g], goalie_id=away_goalie_id[g],
+                                 timeOnIce=away_goalie_stats[g]['timeOnIce'],
+                                 assists=away_goalie_stats[g]['assists'], goals=away_goalie_stats[g]['goals'],
+                                 pim=away_goalie_stats[g]['pim'], shots=away_goalie_stats[g]['shots'],
+                                 saves=away_goalie_stats[g]['saves'],
+                                 powerPlaySaves=away_goalie_stats[g]['powerPlaySaves'],
+                                 shortHandedSaves=away_goalie_stats[g]['shortHandedSaves'],
+                                 evenSaves=away_goalie_stats[g]['evenSaves'],
+                                 shortHandedShotsAgainst=away_goalie_stats[g]['shortHandedShotsAgainst'],
+                                 evenShotsAgainst=away_goalie_stats[g]['evenShotsAgainst'],
+                                 powerPlayShotsAgainst=away_goalie_stats[g]['powerPlayShotsAgainst'],
+                                 decision=away_goalie_stats[g]['decision'],
+                                 savePercentage=away_goalie_stats[g]['savePercentage'],
+                                 evenStrengthSavePercentage=away_goalie_stats[g]['evenStrengthSavePercentage'])
+        away_goalies.append(goalie_stats)
 
-    # Add dictionaries to list
-    stats_dict = [home_stats_dict, away_stats_dict]
+    # Merge the two lists
+    goalie_stats = away_goalies + home_goalies
 
-    return stats_dict
+    return goalie_stats
 
+def retrieve_team(game_id: int, home: bool) -> str:
+    """
+    retrieves the team abbreviation playing in an NHL game
+
+    ...
+
+    Parameters
+    ----------
+    game_id: int
+        game id we are retrieving data for
+    home: bool
+        if True retrieves the home team, False retrieves away
+
+    Returns
+    -------
+    team: str
+        team abbreviation
+    """
+
+    url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
+    resp = requests.get(url)
+    json_data = json.loads(resp.text)
+
+    if home:
+        team = json_data['gameData']['teams']['home']['abbreviation']
+    else:
+        team = json_data['gameData']['teams']['away']['abbreviation']
+
+    return team
+
+def retrieve_date(game_id: int) -> dt.datetime:
+    """
+    retrieves the date an NHL game was played
+
+    ...
+
+    Parameters
+    ----------
+    game_id: int
+        game id we are retrieving data for
+
+    Returns
+    -------
+    date: dt.datetime
+        date that NHL game was played
+    """
+    url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
+    resp = requests.get(url)
+    json_data = json.loads(resp.text)
+
+    date = json_data['gameData']['datetime']['dateTime']
+    date = dt.datetime.strptime(date, '%Y-%m-%dT%H:%M:%SZ')
+
+    return date
+
+def get_starting_goalies(home_abv: str, away_abv: str, date: str) -> (str, str):
+    """
+    scrapes starting goaltenders from dailyfaceoff.com for the specified date and teams
+
+    ...
+
+    Parameters
+    ----------
+    home_abv: str
+        abbreviation for home team
+    away_abv: str
+        abbreviation for away team
+    date: str
+        string for which we want to retrieve starting goalies (ex. '01-13-2021')
+
+    Returns
+    -------
+    home_goalie: str
+        home goalie name
+    away_goalie: str
+        away goalie name
+    """
+
+    # First define a dictionary to translate team abbreviations in our df to the team names used on daily
+    # faceoff
+
+    team_translations = {'MIN':'Minnesota Wild','TOR':'Toronto Maple Leafs',
+                         'PIT':'Pittsburgh Penguins', 'COL':'Colorado Avalanche',
+                         'EDM':'Edmonton Oilers', 'CAR':'Carolina Hurricanes',
+                         'CBJ':'Columbus Blue Jackets', 'NJD':'New Jersey Devils',
+                         'DET':'Detroit Red Wings', 'OTT':'Ottawa Senators',
+                         'BOS':'Boston Bruins', 'SJS':'San Jose Sharks',
+                         'BUF':'Buffalo Sabres','NYI':'New York Islanders',
+                         'WSH':'Washington Capitals','TBL':'Tampa Bay Lightning',
+                         'STL':'St Louis Blues', 'NSH':'Nashville Predators',
+                         'CHI':'Chicago Blackhawks', 'VAN':'Vancouver Canucks',
+                         'CGY':'Calgary Flames', 'PHI':'Philadelphia Flyers',
+                         'LAK':'Los Angeles Kings', 'MTL':'Montreal Canadiens',
+                         'ANA':'Anaheim Ducks', 'DAL':'Dallas Stars',
+                         'NYR':'New York Rangers', 'FLA':'Florida Panthers',
+                         'WPG':'Winnipeg Jets', 'ARI':'Arizona Coyotes',
+                         'VGK':'Vegas Golden Knights'}
+
+    home_team = team_translations[home_abv]
+    away_team = team_translations[away_abv]
+
+    url = f'https://www.dailyfaceoff.com/starting-goalies/{date}'
+
+    # Need headers as daily faceoff will block the get request without one
+    headers = {'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.193 Safari/537.36'}
+    result = requests.get(url, headers=headers)
+
+    # Parse the data
+    src = result.content
+    soup = BeautifulSoup(src, 'lxml')
+
+    goalie_boxes = soup.find_all('div', {'class':'starting-goalies-card stat-card'})
+
+    # find the goalie box that contains the games we are looking for
+    for count, box in enumerate(goalie_boxes):
+        if home_team and away_team in box.text:
+            goalie_box = goalie_boxes[count]
+        else:
+            continue
+    # retrieve the h4 headings which contain the starting goalies
+    h4 = goalie_box.find_all('h4')
+    # Away goalie is at element 1 and home goalie is at element 2
+    away_goalie = h4[1].text
+    home_goalie = h4[2].text
+
+    return home_goalie, away_goalie
+
+def convert_player_to_id(team_name: str, player_name: str):
+    """
+    converts a player name to id
+
+    ...
+
+    Parameters
+    ----------
+    team_name: str
+        abbreviation for the players team
+    player_name: str
+        player name string. first and last name (ex. 'Olli Jokinen')
+
+    Returns
+    -------
+    player_id: int
+        player id
+    """
+    url = f'https://statsapi.web.nhl.com/api/v1/teams'
+    resp = requests.get(url)
+    json_data = json.loads(resp.text)
+
+    for team in json_data['teams']:
+        if team['abbreviation'] == team_name:
+            team_id = team['id']
+        else:
+            continue
+    # Use the team id to go to team page
+    url = f'https://statsapi.web.nhl.com/api/v1/teams/{team_id}?expand=team.roster'
+    resp = requests.get(url)
+    json_data = json.loads(resp.text)
+
+    team_roster = json_data['teams'][0]['roster']['roster']
+
+    for p in team_roster:
+        if p['person']['fullName'] == player_name:
+            return p['person']['id']
+        else:
+            continue
 
 if __name__ == '__main__':
     game_ids = get_game_ids(20192020)
-    retrieve_stats(game_ids[0])
+    scrape_team_stats(game_ids[0])
+    scrape_goalie_stats(game_ids[13])
+    retrieve_team(game_ids[13],home=False)
+    retrieve_date(game_ids[13])
+    get_starting_goalies('FLA', 'CHI', '01-17-2021')
+    convert_player_to_id('BUF', 'Taylor Hall')
