@@ -3,9 +3,11 @@
 import pickle
 import matplotlib.pyplot as plt
 from nhl_mlmodel.covers_scraper import covers_scraper
+import os
 from sklearn.metrics import accuracy_score, brier_score_loss
 from sklearn.calibration import calibration_curve
-from typing import List
+import sys
+from typing import List, Tuple
 
 
 def sportsbook_accuracy(game_data: List[covers_scraper.NhlGame]) -> float:
@@ -35,12 +37,9 @@ def sportsbook_accuracy(game_data: List[covers_scraper.NhlGame]) -> float:
     probabilities = []  # The implied probabilities determined from the moneyline odds
 
     for d in game_data:
-        try:
-            moneyline = int(d.home_ml)
-            home_score = int(d.home_score)
-            away_score = int(d.away_score)
-        except:
-            continue
+        moneyline = int(d.home_ml)
+        home_score = int(d.home_score)
+        away_score = int(d.away_score)
 
         if moneyline == 100:
             # We will exclude tossups for the calibration curve
@@ -55,9 +54,9 @@ def sportsbook_accuracy(game_data: List[covers_scraper.NhlGame]) -> float:
         outcomes.append(home_score > away_score)
         predictions.append(moneyline < 0)
 
-        accuracy = 100 * accuracy_score(outcomes, predictions)
+    accuracy = 100 * accuracy_score(outcomes, predictions)
 
-        return accuracy, outcomes, predictions, probabilities
+    return accuracy, outcomes, predictions, probabilities
 
 def cal_curve(data, bins):
     """
@@ -109,7 +108,7 @@ def cal_curve(data, bins):
 
     plt.tight_layout()
 
-    fig.savefig('model.png')
+    fig.savefig('sb_evaluation.png')
 
 if __name__ == '__main__':
     # get dates that nhl games were played on in the 2018/2019 season
@@ -120,4 +119,8 @@ if __name__ == '__main__':
     for d in dates:
         games += covers_scraper.nhl_games_date(d)
 
-    print(games)
+    accuracy, outcomes, predictions, probabilities = sportsbook_accuracy(games)
+    data = [(outcomes, predictions, probabilities, 'Sportsbook')]
+
+    # create calibration curve and save figure in data folder
+    cal_curve(data,15)
