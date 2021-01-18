@@ -1,9 +1,10 @@
 
 from nhl_mlmodel.nhl_scraper import nhl_scraper
+from nhl_mlmodel.process_data import helpers
+import numpy as np
 import pandas as pd
 import pickle
 import sys
-from time import sleep
 from typing import List
 
 # show full columns on dfs
@@ -211,7 +212,227 @@ def convert_numerical(teams_df: pd.DataFrame, goalies_df: pd.DataFrame) -> (pd.D
         goalies_numerical_df: pd.DataFrame
             goalies_numerical_df: pd.DataFrame
         """
+    # CONVERT OBJECTS TO NUMERICAL
+    teams_numerical_df = teams_df.copy()
+    goalies_numerical_df = goalies_df.copy()
+    # powerPlayPercentage
+    teams_numerical_df['powerPlayPercentage'] = teams_numerical_df['powerPlayPercentage'].astype(float)
+    # faceOffWinPercentage
+    teams_numerical_df['faceOffWinPercentage'] = teams_numerical_df['faceOffWinPercentage'].astype(float)
+    # Convert Goalie timeOnIce to Minutes
+    goalies_numerical_df['timeOnIce'] = goalies_numerical_df['timeOnIce'].map(helpers.convert_minutes)
 
+    # Reset index
+    teams_numerical_df.reset_index(inplace=True)
+    goalies_numerical_df.reset_index(inplace=True)
+
+    return teams_numerical_df, goalies_numerical_df
+
+def add_pdo(teams_df: pd.DataFrame, goalies_df: pd.DataFrame) -> pd.DataFrame:
+    """
+        adds pdo as a stat to the teams_df. will also add evenStrengthGoals, evenStrengthShootingPercent
+        and evenStrengthShots.
+        ...
+
+        Parameters
+        ----------
+        teams_df: pd.DataFrame
+            dataframe containing team stats
+
+        goalies_df: pd.DataFrame
+            dataframe containing goalies stats
+
+        Returns
+        -------
+        teams_df: pd.DataFrame
+            teams_df with added stats
+        """
+    # get game ids
+    game_ids = teams_df['game_id'].to_list()
+    game_ids = helpers.remove_duplicates(game_ids)
+
+    pdos = []
+
+    for id in game_ids:
+        goalies_filtered_df = goalies_df[goalies_df['game_id'] == id]
+
+        # Filter to the home team goalies that played in that game
+        home_goalies_filtered_df = goalies_filtered_df[goalies_filtered_df['is_home_team'] == True]
+
+        # Filter to the away team goalies that played in that game
+        away_goalies_filtered_df = goalies_filtered_df[goalies_filtered_df['is_home_team'] == False]
+
+        # Away shots are taken from the home goalie stats and vice versa
+        away_es_shots = home_goalies_filtered_df['evenShotsAgainst'].sum()
+        home_es_shots = away_goalies_filtered_df['evenShotsAgainst'].sum()
+
+        away_es_goals = home_goalies_filtered_df['evenShotsAgainst'].sum() - home_goalies_filtered_df['evenSaves'].sum()
+        home_es_goals = away_goalies_filtered_df['evenShotsAgainst'].sum() - away_goalies_filtered_df['evenSaves'].sum()
+
+        # Calculate ES Sh%
+        home_es_sh_percent = home_es_goals / home_es_shots
+        away_es_sh_percent = away_es_goals / away_es_shots
+
+        # Calculate ES Sv%
+        home_es_sv_percent = (away_es_shots - away_es_goals) / away_es_shots
+        away_es_sv_percent = (home_es_shots - home_es_goals) / home_es_shots
+
+        # Calculate PDO
+        home_PDO = home_es_sh_percent + home_es_sv_percent
+        away_PDO = away_es_sh_percent + away_es_sv_percent
+
+        # Create dictionary 1 entry for each team
+        pdo_dict = [{'game_id': id, 'pdo': home_PDO, 'evenStrengthGoals' : home_es_goals, 'evenStrengthShots' : home_es_shots, 'evenStrengthShootingPercent' : home_es_sh_percent, 'is_home_team' : True},
+                    {'game_id': id, 'pdo': away_PDO, 'evenStrengthGoals' : away_es_goals, 'evenStrengthShots' : away_es_shots, 'evenStrengthShootingPercent' : away_es_sh_percent, 'is_home_team' : False}]
+        # Append to list
+        pdos += pdo_dict
+
+    # Create PDO dataframe
+    pdo_df = pd.DataFrame(pdos)
+
+    # Merge PDO's into teams_df
+    teams_df = pd.merge(teams_df, pdo_df, left_on=['game_id', 'is_home_team'],
+                          right_on=['game_id', 'is_home_team'], how='left')
+
+    return teams_df
+
+def add_sh_per(teams_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    adds shooting percentage as a stat to the teams_df
+    ...
+
+    Parameters
+    ----------
+    teams_df: pd.DataFrame
+        dataframe containing team stats
+
+    Returns
+    -------
+    teams_df: pd.DataFrame
+        teams_df with shooting percentage added
+    """
+    teams_df['Shooting_Percent'] = teams_df['goals']/teams_df['shots']
+
+    return teams_df
+
+def add_rolling(period, df, stat_columns, is_goalie=False):
+    """
+    creates rolling average stats in in dataframe provided
+    ...
+
+    Parameters
+    ----------
+    period: int
+        the period for which we want to create rolling average
+    df: pd.DataFrame
+        dataframe to process
+    stat_columns: List['str']
+        list of columns in dataframe to create rolling stats for
+
+    Returns
+    -------
+    df: pd.DataFrame
+        dataframe with rolling stats added
+    """
+    for s in stat_columns:
+        if 'object' in str(df[s].dtype): continue
+        df[s+'_'+str(period)+'_avg'] = df.groupby('team')[s].apply(lambda x:x.rolling(period).mean())
+        df[s+'_'+str(period)+'_std'] = df.groupby('team')[s].apply(lambda x:x.rolling(period).std())
+        df[s+'_'+str(period)+'_skew'] = df.groupby('team')[s].apply(lambda x:x.rolling(period).skew())
+
+    return df
+
+def get_diff_df(df, name, is_goalie=False):
+    """
+    calculated stat differentials between home and away team
+    ...
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        dataframe to process
+    is_goalie: bool
+        if this is a goalie dataframe stats will be grouped by goalies instead of team
+
+    Returns
+    -------
+    diff_df: pd.DataFrame
+        dataframe with calculated stat differentials
+    """
+    # Sort by date
+    df = df.sort_values(by='date').copy()
+    newindex = df.groupby('date')['date'].apply(lambda x: x + np.arange(x.size).astype(np.timedelta64))
+    df = df.set_index(newindex).sort_index()
+
+    # get stat columns
+    stat_cols = [x for x in df.columns if 'int' in str(df[x].dtype)]
+    stat_cols.extend([x for x in df.columns if 'float' in str(df[x].dtype)])
+
+    #add rolling stats to the data frame
+    df = add_rolling(3, df, stat_cols)
+    df = add_rolling(7, df, stat_cols)
+    df = add_rolling(14, df, stat_cols)
+    df = add_rolling(41, df, stat_cols)
+    df = add_rolling(82, df, stat_cols)
+
+    # reset stat columns to just the sma features (removing the original stats)
+    df.drop(columns=stat_cols, inplace=True)
+    stat_cols = [x for x in df.columns if 'int' in str(df[x].dtype)]
+    stat_cols.extend([x for x in df.columns if 'float' in str(df[x].dtype)])
+
+    # shift results so that each row is a pregame stat
+    df = df.reset_index(drop=True)
+    df = df.sort_values(by='date')
+
+    for s in stat_cols:
+        if is_goalie:
+            df[s] = df.groupby('goalie_id')[s].shift(1)
+        else:
+            df[s] = df.groupby('team')[s].shift(1)
+
+    # calculate differences in pregame stats from home vs. away teams
+    away_df = df[~df['is_home_team']].copy()
+    away_df = away_df.set_index('game_id')
+    away_df = away_df[stat_cols]
+
+    home_df = df[df['is_home_team']].copy()
+    home_df = home_df.set_index('game_id')
+    home_df = home_df[stat_cols]
+
+    diff_df = home_df.subtract(away_df, fill_value=0)
+    diff_df = diff_df.reset_index()
+
+    # clean column names
+    for s in stat_cols:
+        diff_df[name + "_" + s] = diff_df[s]
+        diff_df.drop(columns=s, inplace=True)
+
+    return diff_df
+
+def impute_skew(df):
+    """
+    will impute NaN skew values with 0
+    ...
+
+    Parameters
+    ----------
+    df: pd.DataFrame
+        dataframe to process
+
+    Returns
+    -------
+    df: pd.DataFrame
+        dataframe with skew imputed
+    """
+    cols = list(df.columns.values)
+
+    for c in cols:
+        if 'Skew' in c:
+            df[c].fillna(0, inplace=True)
+        else:
+            continue
+
+    return df
 
 if __name__ == '__main__':
     # pull all game ids between 2010-2020
@@ -263,3 +484,37 @@ if __name__ == '__main__':
         games_list = pickle.load(f)
 
     games_df = make_games_df(games_list)
+
+    # convert to numerical
+    teams_df, goalies_df = convert_numerical(teams_df, goalies_df)
+
+    # add pdo
+    teams_df = add_pdo(teams_df, goalies_df)
+
+    # add shooting percent
+    teams_df = add_sh_per(teams_df)
+
+    # remove columns that will not be used in teams_df and goalies_df
+    teams_df.drop(['index'], axis=1, inplace=True)
+    goalies_df.drop(['index', 'assists', 'goals', 'pim', 'decision'], axis=1, inplace=True)
+
+    # convert ids to strings
+    teams_df['game_id'] = teams_df['game_id'].map(str)
+    teams_df['goalie_id'] = teams_df['goalie_id'].map(str)
+    goalies_df['game_id'] = goalies_df['game_id'].map(str)
+    goalies_df['goalie_id'] = goalies_df['goalie_id'].map(str)
+    games_df['game_id'] = games_df['game_id'].map(str)
+    games_df['home_goalie_id'] = games_df['home_goalie_id'].map(str)
+    games_df['away_goalie_id'] = games_df['away_goalie_id'].map(str)
+
+    # create rolling stats in main games dataframe
+
+    games_df = pd.merge(left=games_df, right=get_diff_df(teams_df, 'teams'),
+                  on='game_id', how='left')
+
+    print(goalies_df[0:500])
+    sys.exit()
+
+    games_df = pd.merge(left=games_df, right=get_diff_df(goalies_df, 'goalies', is_goalie=True),
+                  on='game_id', how='left')
+
