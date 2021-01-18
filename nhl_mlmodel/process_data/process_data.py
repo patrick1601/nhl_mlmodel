@@ -77,7 +77,6 @@ def pull_team_stats(game_ids: List[int]) -> List[nhl_scraper.NhlTeam]:
 
         if len(team_stats) % 500 == 0:  # Progress bar
             print(str(0.5 * len(team_stats) / len(game_ids) * 100) + ' percent done retrieving game data/stats.')
-        #sleep(1)  # Sleep to avoid max retry errors
 
     return team_stats
 
@@ -106,6 +105,33 @@ def pull_goalie_stats(game_ids: List[int]) -> List[nhl_scraper.NhlGoalie]:
             print(str(0.5 * len(goalie_stats) / len(game_ids) * 100) + ' percent done retrieving goalie data.')
 
     return goalie_stats
+
+def pull_game_info(game_ids: List[int]) -> List[nhl_scraper.NhlGame]:
+    """
+    pulls all game_info for the provided game ids
+    ...
+
+    Parameters
+    ----------
+    game_ids: List[int]
+        list of game ids to pull team stats for
+
+    Returns
+    -------
+    games_info: List[nhl_scraper.NhlGame]
+        list of NhlGame objects
+    """
+
+    # retrieve game by game info for every game in the game_ids list
+    games_info = []
+
+    for i in game_ids:
+        game_i = nhl_scraper.scrape_game_info(i)
+        games_info.append(game_i)
+
+        if len(games_info) % 500 == 0:  # Progress bar
+            print(str(len(games_info) / len(game_ids) * 100) + ' percent done retrieving game data/stats.')
+    return games_info
 
 def make_teams_df(team_stats: List[nhl_scraper.NhlTeam]) -> pd.DataFrame:
     """
@@ -186,6 +212,16 @@ if __name__ == '__main__':
 
         with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'wb') as f:
             pickle.dump(goalie_stats, f)
+
+    # retrieve game by game information for all game ids pulled
+    if True:
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/game_ids.pkl', 'rb') as f:
+            game_ids = pickle.load(f)
+
+        games_info = pull_game_info(game_ids)
+
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_info.pkl', 'wb') as f:
+            pickle.dump(games_info, f)
 
     # make teams df
     if False:
