@@ -202,6 +202,46 @@ class NhlGoalie:
             'evenStrengthSavePercentage': self.evenStrengthSavePercentage
         }
 
+class NhlGame:
+    """
+        represents a game played in the nhl
+
+        ...
+
+        Parameters
+        ----------
+        date: dt.datetime
+            date on which the game was played
+        game_id: int
+            game id to identify the game
+        home_team: str
+            team abbreviation
+        away_team: str
+            team abbreviation
+        home_team_win: boolean
+            True if the home team won
+        home_goalie_id: int
+            home goalie id
+        away_goalie_id: int
+            away goalie id
+        home_goalie_name: str
+            home goalie name
+        away_goalie_name:str
+            away goalie name
+        """
+    def __init__(self, date: dt.datetime, game_id: int, home_team: str, away_team: str,
+                 home_team_win: bool, home_goalie_id: int, away_goalie_id: int, home_goalie_name:str,
+                 away_goalie_name:str):
+        self.date = date
+        self.game_id = game_id
+        self.home_team = home_team
+        self.away_team = away_team
+        self.home_team_win = home_team_win
+        self.home_goalie_id = home_goalie_id
+        self.away_goalie_id = away_goalie_id
+        self.home_goalie_name = home_goalie_name
+        self.away_goalie_name = away_goalie_name
+
 def get_game_ids(season: int) -> List[int]:
     """
     retrieves all of the gameids for the specified season
@@ -554,6 +594,76 @@ def scrape_goalie_stats(game_id: int) -> List[NhlGoalie]:
     goalie_stats = away_goalies + home_goalies
 
     return goalie_stats
+
+def scrape_game_info(game_id:int) -> NhlGame:
+    """
+        returns an NhlGame object with parameters for the game_id provided
+
+        Refer to: https://github.com/dword4/nhlapi on how to use the NHL API
+
+        ...
+
+        Parameters
+        ----------
+        game_id: int
+            game id we are retrieving data for
+
+        Returns
+        -------
+        game: NhlGame
+            NhlGame object with info for the game_id provided
+        """
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
+    resp = session.get(url)
+    json_data = json.loads(resp.text)
+
+    # RETRIEVE INFO REQUIRED
+
+    # retrieve date and convert to date time
+    game_date: str = json_data['gameData']['datetime']['dateTime']
+    game_date = dt.datetime.strptime(game_date, '%Y-%m-%dT%H:%M:%SZ')
+
+    # Retrieve team names
+    home_team: str = json_data["liveData"]['boxscore']['teams']['home']['team']['abbreviation']
+    away_team: str = json_data["liveData"]['boxscore']['teams']['away']['team']['abbreviation']
+
+    # retrieve outcome
+    if json_data['liveData']['linescore']['hasShootout']==False:
+        if json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']['goals'] > json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']['goals']:
+            home_team_win = True
+        if json_data["liveData"]["boxscore"]['teams']['home']['teamStats']['teamSkaterStats']['goals'] < json_data["liveData"]["boxscore"]['teams']['away']['teamStats']['teamSkaterStats']['goals']:
+            home_team_win = False
+    if json_data['liveData']['linescore']['hasShootout']==True:
+        if json_data['liveData']['linescore']['shootoutInfo']['home']['scores'] > json_data['liveData']['linescore']['shootoutInfo']['away']['scores']:
+            home_team_win = True
+        if json_data['liveData']['linescore']['shootoutInfo']['home']['scores'] < json_data['liveData']['linescore']['shootoutInfo']['away']['scores']:
+            home_team_win = False
+
+    # Starting goalies
+    # spot checked a few APIs and it seems like the starting goalie will be listed last in the json
+    # file if he was pulled. The goalie that finishes the game will be listed first (0).
+    home_team_starting_goalie_id = json_data["liveData"]['boxscore']['teams']['home']['goalies'][-1]
+    away_team_starting_goalie_id = json_data["liveData"]['boxscore']['teams']['away']['goalies'][-1]
+    home_team_starting_goalie_name = \
+    json_data["liveData"]['boxscore']['teams']['home']['players']['ID' + str(home_team_starting_goalie_id)][
+        'person']['fullName']
+    away_team_starting_goalie_name = \
+    json_data["liveData"]['boxscore']['teams']['away']['players']['ID' + str(away_team_starting_goalie_id)][
+        'person']['fullName']
+
+    game_info = NhlGame(date=game_date, game_id=game_id, home_team=home_team, away_team=away_team,
+                        home_team_win=home_team_win, home_goalie_id=home_team_starting_goalie_id,
+                        away_goalie_id=away_team_starting_goalie_id,
+                        home_goalie_name=home_team_starting_goalie_name,
+                        away_goalie_name=away_team_starting_goalie_name)
+    return game_info
+
 
 def retrieve_team(game_id: int, home: bool) -> str:
     """

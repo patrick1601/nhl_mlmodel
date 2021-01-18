@@ -147,6 +147,23 @@ def make_goalies_df(goalie_stats: List[nhl_scraper.NhlGoalie]) -> pd.DataFrame:
     goalies_df = pd.DataFrame.from_records([g.to_dict() for g in goalie_stats])
     return goalies_df
 
+def make_games_df(team_stats: List[nhl_scraper.NhlTeam]) -> pd.DataFrame:
+    """
+        main dataframe that will eventually get fed to the machine learning model
+        ...
+
+        Parameters
+        ----------
+        team_stats: List[nhl_scraper.NhlGoalie]
+            list of NhlTeam objects
+
+        Returns
+        -------
+        games_df: pd.DataFrame
+            each row of dataframe represents 1 NHL game
+        """
+
+
 if __name__ == '__main__':
     # pull all game ids between 2010-2020
     if False:
@@ -181,7 +198,7 @@ if __name__ == '__main__':
             pickle.dump(teams_df, f)
 
     # make goalies df
-    if True:
+    if False:
         with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'rb') as f:
             goalie_stats_list = pickle.load(f)
 
