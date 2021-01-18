@@ -76,6 +76,28 @@ class NhlTeam:
         self.goalie_id = goalie_id
         self.goalie_name = goalie_name
 
+    def to_dict(self):
+        return {
+            'date': self.date,
+            'game_id': self.game_id,
+            'team': self.team,
+            'is_home_team': self.is_home_team,
+            'home_team_win': self.home_team_win,
+            'goals': self.goals,
+            'pim': self.pim,
+            'shots': self.shots,
+            'powerPlayPercentage': self.powerPlayPercentage,
+            'powerPlayGoals': self.powerPlayGoals,
+            'powerPlayOpportunities': self.powerPlayOpportunities,
+            'faceOffWinPercentage': self.faceOffWinPercentage,
+            'blocked': self.blocked,
+            'takeaways': self.takeaways,
+            'giveaways': self.giveaways,
+            'hits': self.hits,
+            'goalie_id': self.goalie_id,
+            'goalie_name': self.goalie_name
+        }
+
 class NhlGoalie:
     """
         represents a game played in the nhl by 1 goalie
@@ -154,6 +176,31 @@ class NhlGoalie:
         self.decision = decision
         self.savePercentage = savePercentage
         self.evenStrengthSavePercentage = evenStrengthSavePercentage
+
+    def to_dict(self):
+        return {
+            'date': self.date,
+            'game_id': self.game_id,
+            'team': self.team,
+            'is_home_team': self.is_home_team,
+            'goalie_id': self.goalie_id,
+            'goalie_name': self.goalie_name,
+            'timeOnIce': self.timeOnIce,
+            'assists': self.assists,
+            'goals': self.goals,
+            'pim': self.pim,
+            'shots': self.shots,
+            'saves': self.saves,
+            'powerPlaySaves': self.powerPlaySaves,
+            'shortHandedSaves': self.shortHandedSaves,
+            'evenSaves': self.evenSaves,
+            'shortHandedShotsAgainst': self.shortHandedShotsAgainst,
+            'evenShotsAgainst': self.evenShotsAgainst,
+            'powerPlayShotsAgainst': self.powerPlayShotsAgainst,
+            'decision': self.decision,
+            'savePercentage': self.savePercentage,
+            'evenStrengthSavePercentage': self.evenStrengthSavePercentage
+        }
 
 def get_game_ids(season: int) -> List[int]:
     """

@@ -1,9 +1,13 @@
 
 from nhl_mlmodel.nhl_scraper import nhl_scraper
+import pandas as pd
 import pickle
 import sys
 from time import sleep
 from typing import List
+
+# show full columns on dfs
+pd.set_option('display.expand_frame_repr', False)
 
 
 def pull_game_ids(first_year: int=2010, last_year: int=2020) -> List[int]:
@@ -103,6 +107,45 @@ def pull_goalie_stats(game_ids: List[int]) -> List[nhl_scraper.NhlGoalie]:
 
     return goalie_stats
 
+def make_teams_df(team_stats: List[nhl_scraper.NhlTeam]) -> pd.DataFrame:
+    """
+        makes a dataframe from a list of NhlTeam objects
+        ...
+
+        Parameters
+        ----------
+        team_stats: List[nhl_scraper.NhlTeam]
+            list of NhlTeam objects
+
+        Returns
+        -------
+        teams_df: pd.DataFrame
+            each row of dataframe represents stats for 1 team in 1 game. Therefore each game will have
+            2 rows one for the home team and one for away.
+        """
+
+    teams_df = pd.DataFrame.from_records([t.to_dict() for t in team_stats])
+    return teams_df
+
+def make_goalies_df(goalie_stats: List[nhl_scraper.NhlGoalie]) -> pd.DataFrame:
+    """
+        makes a dataframe from a list of NhlGoalie objects
+        ...
+
+        Parameters
+        ----------
+        goalie_stats: List[nhl_scraper.NhlGoalie]
+            list of NhlGoalie objects
+
+        Returns
+        -------
+        goalies_df: pd.DataFrame
+            each row of dataframe represents stats for 1 goalie in 1 game. Therefore each game will have
+            at least 2 rows.
+        """
+
+    goalies_df = pd.DataFrame.from_records([g.to_dict() for g in goalie_stats])
+    return goalies_df
 
 if __name__ == '__main__':
     # pull all game ids between 2010-2020
@@ -118,7 +161,7 @@ if __name__ == '__main__':
             pickle.dump(team_stats, f)
 
     # retrieve goalie game by game stats for all game ids pulled
-    if True:
+    if False:
         with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/game_ids.pkl', 'rb') as f:
             game_ids = pickle.load(f)
 
@@ -126,3 +169,23 @@ if __name__ == '__main__':
 
         with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'wb') as f:
             pickle.dump(goalie_stats, f)
+
+    # make teams df
+    if False:
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_stats.pkl', 'rb') as f:
+            team_stats_list = pickle.load(f)
+
+        teams_df = make_teams_df(team_stats_list)
+
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_df.pkl', 'wb') as f:
+            pickle.dump(teams_df, f)
+
+    # make goalies df
+    if True:
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'rb') as f:
+            goalie_stats_list = pickle.load(f)
+
+        goalies_df = make_goalies_df(goalie_stats_list)
+
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalies_df.pkl', 'wb') as f:
+            pickle.dump(goalies_df, f)
