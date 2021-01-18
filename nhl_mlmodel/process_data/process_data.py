@@ -434,6 +434,48 @@ def impute_skew(df):
 
     return df
 
+def goalie_rest(goalies_df: pd.DataFrame, games_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    calculates how many rest days a goalie has had with a maximum value of 30 days
+    ...
+
+    Parameters
+    ----------
+    goalies_df: pd.DataFrame
+        goalies dataframe
+    games_df: pd.Dataframe
+        games dataframe
+
+    Returns
+    -------
+    games_df: pd.DataFrame
+        dataframe with goalie rest added
+    """
+    # It's easier with the way the goalie df is setup to calculate this in here than merge into the main dataframe
+    goalies_df['goalie_rest'] = goalies_df.groupby('goalie_id')['date'].diff().dt.days
+
+    # The first teams games in the DF are NaN as there are no previous reference points.
+    # We will fill these in with the max value of 30 days as these games were at the start of the season
+    goalies_df['goalie_rest'].fillna(30, inplace=True)
+
+    # Make a dataframe just containing goalie rest data
+    goalie_rest = goalies_df[['game_id', 'goalie_id', 'goalie_rest']]
+    # Rename to Home and Away Goalie Rest
+    home_goalie_rest = goalie_rest.rename({'goalie_rest': 'home_goalie_rest'}, axis=1)
+    away_goalie_rest = goalie_rest.rename({'goalie_rest': 'away_goalie_rest'}, axis=1)
+
+    # Merge into main dataframe
+    games_df = pd.merge(games_df, home_goalie_rest, left_on=['game_id', 'home_goalie_id'],
+                            right_on=['game_id', 'goalie_id'], how='left')
+
+    games_df = pd.merge(games_df, away_goalie_rest, left_on=['game_id', 'away_goalie_id'],
+                            right_on=['game_id', 'goalie_id'], how='left')
+
+    # Remove some columns
+    games_df.drop(['goalie_id_x','goalie_id_y'], axis=1, inplace=True)
+
+    return games_df
+
 if __name__ == '__main__':
     # pull all game ids between 2010-2020
     if False:
@@ -512,9 +554,21 @@ if __name__ == '__main__':
     games_df = pd.merge(left=games_df, right=get_diff_df(teams_df, 'teams'),
                   on='game_id', how='left')
 
-    print(goalies_df[0:500])
-    sys.exit()
+    print(games_df.shape)
 
     games_df = pd.merge(left=games_df, right=get_diff_df(goalies_df, 'goalies', is_goalie=True),
                   on='game_id', how='left')
 
+    # drop duplicates due to multiple goalies playing in one game
+    # todo confirm if the first or last game should be kept
+    games_df.drop_duplicates(subset=['game_id'], keep="last", inplace=True)
+
+    print(games_df.shape)
+
+    # impute skews
+    games_df = impute_skew(games_df)
+
+    # add goalie rest
+    games_df = goalie_rest(goalies_df, games_df)
+    print(games_df.shape)
+    print(games_df)
