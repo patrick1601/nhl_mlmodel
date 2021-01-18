@@ -210,14 +210,14 @@ def scrape_team_stats(game_id: int) -> List[NhlTeam]:
             list containing an entry for the home team and away team playing in the same game
         """
 
-    # set max retry requests with a back off strategy
-    retries = Retry(total=5,
-                    backoff_factor=0.1,
-                    status_forcelist=[500, 502, 503, 504])
-    
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
 
     url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
-    resp = requests.get(url)
+    resp = session.get(url)
     json_data = json.loads(resp.text)
 
     # RETRIEVE STATS REQUIRED
@@ -306,9 +306,15 @@ def scrape_goalie_stats(game_id: int) -> List[NhlGoalie]:
         team_stats: List[NhlTeam]
             list containing an entry for the home team and away team playing in the same game
         """
+    # backoff strategy to avoid maxretry errors
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
 
     url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
-    resp = requests.get(url)
+    resp = session.get(url)
     json_data = json.loads(resp.text)
 
     # RETRIEVE STATS REQUIRED
@@ -351,21 +357,76 @@ def scrape_goalie_stats(game_id: int) -> List[NhlGoalie]:
     counter = list(range(len(home_goalie_stats))) # counter for number of goalies that played
 
     for g in counter:
+        try:
+            toi = home_goalie_stats[g]['timeOnIce']
+        except KeyError:
+            toi = None
+        try:
+            a = home_goalie_stats[g]['assists']
+        except KeyError:
+            a = None
+        try:
+            goal = home_goalie_stats[g]['goals']
+        except KeyError:
+            goal = None
+        try:
+            pims = home_goalie_stats[g]['pim']
+        except KeyError:
+            pims = None
+        try:
+            s = home_goalie_stats[g]['shots']
+        except KeyError:
+            s = None
+        try:
+            sv = home_goalie_stats[g]['saves']
+        except KeyError:
+            sv = None
+        try:
+            ppsv = home_goalie_stats[g]['powerPlaySaves']
+        except KeyError:
+            ppsv = None
+        try:
+            shsv = home_goalie_stats[g]['shortHandedSaves']
+        except KeyError:
+            shsv = None
+        try:
+            esv = home_goalie_stats[g]['evenSaves']
+        except KeyError:
+            esv = None
+        try:
+            shsa = home_goalie_stats[g]['shortHandedShotsAgainst']
+        except KeyError:
+            shsa = None
+        try:
+            esa = home_goalie_stats[g]['evenShotsAgainst']
+        except KeyError:
+            esa = None
+        try:
+            ppsa = home_goalie_stats[g]['powerPlayShotsAgainst']
+        except KeyError:
+            ppsa = None
+        try:
+            dec = home_goalie_stats[g]['decision']
+        except KeyError:
+            dec = None
+        try:
+            svper = home_goalie_stats[g]['savePercentage']
+        except KeyError:
+            svper = None
+        try:
+            essvper = home_goalie_stats[g]['evenStrengthSavePercentage']
+        except KeyError:
+            essvper = None
+
+
+
+
         goalie_stats = NhlGoalie(date=game_date, game_id=game_id, team=home_goalie_team, is_home_team=True,
-                                 goalie_name=home_goalie_names[g], goalie_id=home_goalie_id[g],
-                                 timeOnIce=home_goalie_stats[g]['timeOnIce'],
-                                 assists=home_goalie_stats[g]['assists'], goals=home_goalie_stats[g]['goals'],
-                                 pim=home_goalie_stats[g]['pim'], shots=home_goalie_stats[g]['shots'],
-                                 saves=home_goalie_stats[g]['saves'],
-                                 powerPlaySaves=home_goalie_stats[g]['powerPlaySaves'],
-                                 shortHandedSaves=home_goalie_stats[g]['shortHandedSaves'],
-                                 evenSaves=home_goalie_stats[g]['evenSaves'],
-                                 shortHandedShotsAgainst=home_goalie_stats[g]['shortHandedShotsAgainst'],
-                                 evenShotsAgainst=home_goalie_stats[g]['evenShotsAgainst'],
-                                 powerPlayShotsAgainst=home_goalie_stats[g]['powerPlayShotsAgainst'],
-                                 decision=home_goalie_stats[g]['decision'],
-                                 savePercentage=home_goalie_stats[g]['savePercentage'],
-                                 evenStrengthSavePercentage=home_goalie_stats[g]['evenStrengthSavePercentage'])
+                                 goalie_name=home_goalie_names[g], goalie_id=home_goalie_id[g], timeOnIce=toi,
+                                 assists=a, goals=goal, pim=pims, shots=s, saves=sv, powerPlaySaves=ppsv,
+                                 shortHandedSaves=shsv, evenSaves=esv, shortHandedShotsAgainst=shsa,
+                                 evenShotsAgainst=esa, powerPlayShotsAgainst=ppsa, decision=dec,
+                                 savePercentage= svper, evenStrengthSavePercentage=essvper)
         home_goalies.append(goalie_stats)
 
     # make away goalie list. for loop needed as there could be more than 2 goalies playing in 1 game
@@ -373,21 +434,73 @@ def scrape_goalie_stats(game_id: int) -> List[NhlGoalie]:
     counter = list(range(len(away_goalie_stats))) # counter for number of goalies that played
 
     for g in counter:
+        try:
+            toi = away_goalie_stats[g]['timeOnIce']
+        except KeyError:
+            toi = None
+        try:
+            a = away_goalie_stats[g]['assists']
+        except KeyError:
+            a = None
+        try:
+            goal = away_goalie_stats[g]['goals']
+        except KeyError:
+            goal = None
+        try:
+            pims = away_goalie_stats[g]['pim']
+        except KeyError:
+            pims = None
+        try:
+            s = away_goalie_stats[g]['shots']
+        except KeyError:
+            s = None
+        try:
+            sv = away_goalie_stats[g]['saves']
+        except KeyError:
+            sv = None
+        try:
+            ppsv = away_goalie_stats[g]['powerPlaySaves']
+        except KeyError:
+            ppsv = None
+        try:
+            shsv = away_goalie_stats[g]['shortHandedSaves']
+        except KeyError:
+            shsv = None
+        try:
+            esv = away_goalie_stats[g]['evenSaves']
+        except KeyError:
+            esv = None
+        try:
+            shsa = away_goalie_stats[g]['shortHandedShotsAgainst']
+        except KeyError:
+            shsa = None
+        try:
+            esa = away_goalie_stats[g]['evenShotsAgainst']
+        except KeyError:
+            esa = None
+        try:
+            ppsa = away_goalie_stats[g]['powerPlayShotsAgainst']
+        except KeyError:
+            ppsa = None
+        try:
+            dec = away_goalie_stats[g]['decision']
+        except KeyError:
+            dec = None
+        try:
+            svper = away_goalie_stats[g]['savePercentage']
+        except KeyError:
+            svper = None
+        try:
+            essvper = away_goalie_stats[g]['evenStrengthSavePercentage']
+        except KeyError:
+            essvper = None
+
         goalie_stats = NhlGoalie(date=game_date, game_id=game_id, team=away_goalie_team, is_home_team=False,
-                                 goalie_name=away_goalie_names[g], goalie_id=away_goalie_id[g],
-                                 timeOnIce=away_goalie_stats[g]['timeOnIce'],
-                                 assists=away_goalie_stats[g]['assists'], goals=away_goalie_stats[g]['goals'],
-                                 pim=away_goalie_stats[g]['pim'], shots=away_goalie_stats[g]['shots'],
-                                 saves=away_goalie_stats[g]['saves'],
-                                 powerPlaySaves=away_goalie_stats[g]['powerPlaySaves'],
-                                 shortHandedSaves=away_goalie_stats[g]['shortHandedSaves'],
-                                 evenSaves=away_goalie_stats[g]['evenSaves'],
-                                 shortHandedShotsAgainst=away_goalie_stats[g]['shortHandedShotsAgainst'],
-                                 evenShotsAgainst=away_goalie_stats[g]['evenShotsAgainst'],
-                                 powerPlayShotsAgainst=away_goalie_stats[g]['powerPlayShotsAgainst'],
-                                 decision=away_goalie_stats[g]['decision'],
-                                 savePercentage=away_goalie_stats[g]['savePercentage'],
-                                 evenStrengthSavePercentage=away_goalie_stats[g]['evenStrengthSavePercentage'])
+                                 goalie_name=away_goalie_names[g], goalie_id=away_goalie_id[g], timeOnIce=toi,
+                                 assists=a, goals=goal, pim=pims, shots=s, saves=sv, powerPlaySaves=ppsv,
+                                 shortHandedSaves=shsv, evenSaves=esv, shortHandedShotsAgainst=shsa,
+                                 evenShotsAgainst=esa, powerPlayShotsAgainst=ppsa, decision=dec,
+                                 savePercentage=svper, evenStrengthSavePercentage=essvper)
         away_goalies.append(goalie_stats)
 
     # Merge the two lists

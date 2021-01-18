@@ -68,22 +68,61 @@ def pull_team_stats(game_ids: List[int]) -> List[nhl_scraper.NhlTeam]:
     team_stats = []
 
     for i in game_ids:
-        stats_dict = nhl_scraper.scrape_team_stats(i)
-        team_stats += stats_dict
+        stats_i = nhl_scraper.scrape_team_stats(i)
+        team_stats += stats_i
 
         if len(team_stats) % 500 == 0:  # Progress bar
             print(str(0.5 * len(team_stats) / len(game_ids) * 100) + ' percent done retrieving game data/stats.')
-        sleep(1)  # Sleep to avoid max retry errors
+        #sleep(1)  # Sleep to avoid max retry errors
 
     return team_stats
 
+def pull_goalie_stats(game_ids: List[int]) -> List[nhl_scraper.NhlGoalie]:
+    """
+        pulls all goalie stats for the provided game ids
+        ...
+
+        Parameters
+        ----------
+        game_ids: List[int]
+            list of game ids to pull team stats for
+
+        Returns
+        -------
+        goalie_stats: List[nhl_scraper.NhlGoalie]
+            list of NhlGoalie objects
+        """
+
+    goalie_stats=[]
+    for i in game_ids:
+        goalies_i = nhl_scraper.scrape_goalie_stats(i)
+        goalie_stats += goalies_i
+
+        if len(goalie_stats) % 250 == 0:  # Progress bar # todo fix progress bar to account for more goalies than game ids
+            print(str(0.5 * len(goalie_stats) / len(game_ids) * 100) + ' percent done retrieving goalie data.')
+
+    return goalie_stats
+
+
 if __name__ == '__main__':
     # pull all game ids between 2010-2020
-    game_ids = pull_game_ids(2010, 2020)
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/game_ids.pkl', 'wb') as f:
-        pickle.dump(game_ids, f)
+    if False:
+        game_ids = pull_game_ids(2010, 2020)
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/game_ids.pkl', 'wb') as f:
+            pickle.dump(game_ids, f)
 
     # retrieve team game by game stats for all game ids pulled
-    team_stats = pull_team_stats(game_ids)
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_stats.pkl', 'wb') as f:
-        pickle.dump(team_stats, f)
+    if False:
+        team_stats = pull_team_stats(game_ids)
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_stats.pkl', 'wb') as f:
+            pickle.dump(team_stats, f)
+
+    # retrieve goalie game by game stats for all game ids pulled
+    if True:
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/game_ids.pkl', 'rb') as f:
+            game_ids = pickle.load(f)
+
+        goalie_stats = pull_goalie_stats(game_ids)
+
+        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'wb') as f:
+            pickle.dump(goalie_stats, f)
