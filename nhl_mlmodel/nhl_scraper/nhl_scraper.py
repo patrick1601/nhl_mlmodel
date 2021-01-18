@@ -242,6 +242,19 @@ class NhlGame:
         self.home_goalie_name = home_goalie_name
         self.away_goalie_name = away_goalie_name
 
+    def to_dict(self):
+        return {
+            'date': self.date,
+            'game_id': self.game_id,
+            'home_team': self.home_team,
+            'away_team': self.away_team,
+            'home_team_win': self.home_team_win,
+            'home_goalie_id': self.home_goalie_id,
+            'away_goalie_id': self.away_goalie_id,
+            'home_goalie_name': self.home_goalie_name,
+            'away_goalie_name': self.away_goalie_name
+        }
+
 def get_game_ids(season: int) -> List[int]:
     """
     retrieves all of the gameids for the specified season

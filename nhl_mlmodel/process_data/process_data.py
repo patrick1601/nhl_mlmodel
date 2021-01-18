@@ -173,7 +173,7 @@ def make_goalies_df(goalie_stats: List[nhl_scraper.NhlGoalie]) -> pd.DataFrame:
     goalies_df = pd.DataFrame.from_records([g.to_dict() for g in goalie_stats])
     return goalies_df
 
-def make_games_df(team_stats: List[nhl_scraper.NhlTeam]) -> pd.DataFrame:
+def make_games_df(games_info: List[nhl_scraper.NhlGame]) -> pd.DataFrame:
     """
         main dataframe that will eventually get fed to the machine learning model
         ...
@@ -187,6 +187,29 @@ def make_games_df(team_stats: List[nhl_scraper.NhlTeam]) -> pd.DataFrame:
         -------
         games_df: pd.DataFrame
             each row of dataframe represents 1 NHL game
+        """
+    games_df = pd.DataFrame.from_records([g.to_dict() for g in games_info])
+    return games_df
+
+def convert_numerical(teams_df: pd.DataFrame, goalies_df: pd.DataFrame) -> (pd.DataFrame, pd.DataFrame):
+    """
+        convert non-numerical features in dataframes to numerical
+        ...
+
+        Parameters
+        ----------
+        teams_df: pd.DataFrame
+            dataframe containing team stats
+
+        goalies_df: pd.DataFrame
+            dataframe containing goalies stats
+
+        Returns
+        -------
+        teams_numerical_df: pd.DataFrame
+            teams_df converted to numerical
+        goalies_numerical_df: pd.DataFrame
+            goalies_numerical_df: pd.DataFrame
         """
 
 
@@ -214,7 +237,7 @@ if __name__ == '__main__':
             pickle.dump(goalie_stats, f)
 
     # retrieve game by game information for all game ids pulled
-    if True:
+    if False:
         with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/game_ids.pkl', 'rb') as f:
             game_ids = pickle.load(f)
 
@@ -224,21 +247,19 @@ if __name__ == '__main__':
             pickle.dump(games_info, f)
 
     # make teams df
-    if False:
-        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_stats.pkl', 'rb') as f:
-            team_stats_list = pickle.load(f)
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_stats.pkl', 'rb') as f:
+        team_stats_list = pickle.load(f)
 
-        teams_df = make_teams_df(team_stats_list)
-
-        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_df.pkl', 'wb') as f:
-            pickle.dump(teams_df, f)
+    teams_df = make_teams_df(team_stats_list)
 
     # make goalies df
-    if False:
-        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'rb') as f:
-            goalie_stats_list = pickle.load(f)
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'rb') as f:
+        goalie_stats_list = pickle.load(f)
 
-        goalies_df = make_goalies_df(goalie_stats_list)
+    goalies_df = make_goalies_df(goalie_stats_list)
 
-        with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalies_df.pkl', 'wb') as f:
-            pickle.dump(goalies_df, f)
+    # make games df
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_info.pkl', 'rb') as f:
+        games_list = pickle.load(f)
+
+    games_df = make_games_df(games_list)
