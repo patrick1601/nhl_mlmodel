@@ -1,4 +1,6 @@
+import datetime as dt
 import json
+from nhl_mlmodel.power_rankings import power_rankings
 from nhl_mlmodel.predict_games import helpers
 from nhl_mlmodel.process_data import process_data
 from nhl_mlmodel.nhl_scraper import nhl_scraper
@@ -533,7 +535,6 @@ def rolling_win_percentage(games_df: pd.DataFrame, period: int) -> pd.DataFrame:
         dataframe with rolling win percentage added
     """
     # Target Encoding, this will create a period SMA win percentage columns for the home and away teams
-    # todo double check this is calculating actual win percent and not just home/away win percent
     column_names = ['home_win_percent_'+str(period)+'_avg','away_win_percent_'+str(period)+'_avg']
 
     for x in column_names:
@@ -542,6 +543,40 @@ def rolling_win_percentage(games_df: pd.DataFrame, period: int) -> pd.DataFrame:
         else:
             games_df[x] = games_df.groupby('away_team')['home_team_win'].apply(lambda x: x.rolling(period).mean()).shift(1)
     return games_df
+
+def make_predictions(prediction_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    takes the prediction dataframe and runs XGBoost model to predict games
+    ...
+
+    Parameters
+    ----------
+    prediction_df: pd.DataFrame
+        prediction dataframe
+
+    Returns
+    -------
+    predict_df: pd.DataFrame
+        prediction_df with added win percentage from XGBoost
+    """
+    # load model
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/xgb_model_opt.pkl', 'rb') as f:
+        model = pickle.load(f)
+
+    # Create prediction set
+    X = prediction_df.drop(columns=['game_id', 'home_team', 'away_team', 'date', 'home_goalie_id', 'away_goalie_id', 'home_team_win'])
+
+    # Reorder columns so training and prediction sets match
+    cols_when_model_builds = model.get_booster().feature_names
+    X = X[cols_when_model_builds]
+
+    # Create prediction dataframe
+    predict_df = prediction_df[['game_id','home_team','away_team','date','home_goalie_id','away_goalie_id','home_goalie_name','away_goalie_name']]
+
+    predict_df['xgb_home_win'] = model.predict(X).astype('bool')
+    predict_df['xgb_home_win_percent'] = model.predict_proba(X)[:,1]
+
+    return(predict_df)
 
 if __name__ == '__main__':
     predict_ids = main_get_predict_game_ids('2021-01-19') #####
@@ -574,6 +609,18 @@ if __name__ == '__main__':
     goalies_df = make_goalies_df(goalie_stats)
     games_df = make_games_df(games_info)
 
+    # If it cannot find a goalie id replace the id with 0
+    games_df['home_goalie_id'].fillna(value=0, inplace=True)
+    games_df['away_goalie_id'].fillna(value=0, inplace=True)
+    games_df['home_goalie_id'] = games_df['home_goalie_id'].astype(int)
+    games_df['away_goalie_id'] = games_df['away_goalie_id'].astype(int)
+
+    goalies_df['goalie_id'].fillna(value=0, inplace=True)
+    goalies_df['goalie_id'] = goalies_df['goalie_id'].astype(int)
+
+    teams_df['goalie_id'].fillna(value=0, inplace=True)
+    teams_df['goalie_id'] = teams_df['goalie_id'].astype(int)
+
     # process data
 
     # convert to numerical
@@ -598,9 +645,6 @@ if __name__ == '__main__':
     games_df['home_goalie_id'] = games_df['home_goalie_id'].map(str)
     games_df['away_goalie_id'] = games_df['away_goalie_id'].map(str)
 
-    # append games to predict to bottom of dataframe
-    games_df = games_df.append(predictions_df, ignore_index=True)
-
     # reset indexes
     games_df = games_df.reset_index(drop=True)
     players_df = teams_df.reset_index(drop=True)
@@ -616,5 +660,70 @@ if __name__ == '__main__':
     games_df = pd.merge(left=games_df, right=get_diff_df(goalies_df, 'goalies', is_goalie=True),
                   on='game_id', how='left')
 
-    print(games_df)
+    # drop duplicates due to multiple goalies playing in one game
+    # todo confirm if the first or last game should be kept
+    games_df.drop_duplicates(subset=['game_id'], keep="last", inplace=True)
 
+    print(games_df.shape)
+
+    # impute skews
+    games_df = impute_skew(games_df)
+
+    # add goalie rest
+    games_df = goalie_rest(goalies_df, games_df)
+
+    # add team rest
+    games_df = team_rest(goalies_df, games_df)
+
+    # add power rankings
+    games_df = power_rankings.fast_elo_ratings(games_df)
+    games_df = power_rankings.slow_elo_ratings(games_df)
+    games_df = power_rankings.glicko(games_df)
+    games_df = power_rankings.trueskill(games_df)
+
+    # rolling win percentage
+    # first remove the games that have not yet happened
+    rolling_win_df = games_df.drop(games_df.tail(len(predict_ids)).index)
+    rolling_win_toappend_df = games_df.tail(len(predict_ids))
+
+    days = [10,20,41,82]
+
+    for d in days:
+        # Target Encoding, this will create a period SMA win percentage columns for the home and away teams
+        encode_me = ['home_win_percent_' + str(d) + '_avg', 'away_win_percent_' + str(d) + '_avg']
+
+        for x in encode_me:
+            if x == 'home_win_percent_' + str(d) + '_avg':
+                rolling_win_df[x] = rolling_win_df.groupby('home_team')['home_team_win'].apply(lambda x: x.rolling(d).mean())
+            else:
+                rolling_win_df[x] = rolling_win_df.groupby('away_team')['home_team_win'].apply(lambda x: x.rolling(d).mean())
+
+    # Append games to predict back to bottom of dataframe so we can shift the win percentage
+    # results down into the games to predict
+    rolling_win_df = rolling_win_df.append(rolling_win_toappend_df, ignore_index=True)
+    rolling_win_df.reset_index(inplace=True)
+
+    for d in days:
+        # Target Encoding, this will create a period SMA win percentage columns for the home and away teams
+        encode_me = ['home_win_percent_' + str(d) + '_avg', 'away_win_percent_' + str(d) + '_avg']
+
+        for x in encode_me:
+            if x == 'home_win_percent_' + str(d) + '_avg':
+                rolling_win_df[x] = rolling_win_df.groupby('home_team')[x].shift(1)
+            else:
+                rolling_win_df[x] = rolling_win_df.groupby('away_team')[x].shift(1)
+
+    games_df = rolling_win_df
+
+    # Retrieve last rows which are just the games we are predicting
+    prediction_df = games_df.tail(len(predict_ids))
+
+    prediction_df.reset_index(inplace=True, drop=True)
+
+    predictions = make_predictions(prediction_df)
+    print(predictions)
+
+    todays_date = str(dt.datetime.today()).split()[0]
+
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/Predictions/'+todays_date+'predictions.pkl', 'wb') as f:
+        pickle.dump(team_stats, f)

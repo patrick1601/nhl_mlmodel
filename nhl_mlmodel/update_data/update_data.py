@@ -708,15 +708,3 @@ if __name__ == '__main__':
 
     games_df.reset_index(inplace=True, drop=True)
     print(games_df)
-
-    # Pickle and games_df for machine learning
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_df.pkl', 'wb') as f:
-        pickle.dump(games_df, f)
-
-    # update database pickle files
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_stats.pkl', 'wb') as f:
-        pickle.dump(team_stats_list, f)
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'wb') as f:
-        pickle.dump(goalie_stats_list, f)
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_info.pkl', 'wb') as f:
-        pickle.dump(games_list, f)

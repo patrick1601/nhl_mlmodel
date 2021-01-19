@@ -13,11 +13,14 @@ def convert_minutes(min):
     minutes_played: float
         minutes string converted to numerical minutes
     """
-    split_min = min.split(':')
-    minutes = int(split_min[0])
-    seconds = int(split_min[1])
-    minutes_played = minutes + seconds/60
-    return minutes_played
+    try:
+        split_min = min.split(':')
+        minutes = int(split_min[0])
+        seconds = int(split_min[1])
+        minutes_played = minutes + seconds/60
+        return minutes_played
+    except AttributeError:
+        pass
 
 def remove_duplicates(x: list) -> list:
     """
