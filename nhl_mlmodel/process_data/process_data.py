@@ -458,6 +458,9 @@ def goalie_rest(goalies_df: pd.DataFrame, games_df: pd.DataFrame) -> pd.DataFram
     # We will fill these in with the max value of 30 days as these games were at the start of the season
     goalies_df['goalie_rest'].fillna(30, inplace=True)
 
+    # If the days rest is over 30 just make it 30
+    goalies_df.loc[goalies_df["goalie_rest"] > 30, "goalie_rest"] = 30
+
     # Make a dataframe just containing goalie rest data
     goalie_rest = goalies_df[['game_id', 'goalie_id', 'goalie_rest']]
     # Rename to Home and Away Goalie Rest
@@ -473,6 +476,57 @@ def goalie_rest(goalies_df: pd.DataFrame, games_df: pd.DataFrame) -> pd.DataFram
 
     # Remove some columns
     games_df.drop(['goalie_id_x','goalie_id_y'], axis=1, inplace=True)
+
+    return games_df
+
+def team_rest(goalies_df: pd.DataFrame, games_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    calculates how many rest days a teams has had with a maximum value of 7 days
+    ...
+
+    Parameters
+    ----------
+    goalies_df: pd.DataFrame
+        goalies dataframe
+    games_df: pd.Dataframe
+        games dataframe
+
+    Returns
+    -------
+    games_df: pd.DataFrame
+        dataframe with team rest added
+    """
+    # TEAM DAYS REST
+    # It's easier with the way the goalie df is setup to calculate this in here than merge into the main dataframe
+    # Convert date to datetime in goalie dataframe
+    goalies_df['team_rest'] = goalies_df.groupby('team')['date'].diff().dt.days
+    # The first teams games in the DF are NaN as there are no previous reference points.
+    # We will fill these in with the max value of 7 days as these games were at the start of the 2010 season
+    goalies_df['team_rest'].fillna(7, inplace=True)
+    # If the days rest is over 7 just make it 7
+    goalies_df.loc[goalies_df["team_rest"] > 7, "team_rest"] = 7
+    # Make a dataframe just containing team rest data
+    team_rest = goalies_df[['game_id', 'goalie_id', 'team_rest']]
+
+    # Rename to Home/Away Team Rest
+    home_team_rest = team_rest.rename({'team_rest': 'home_team_rest'}, axis=1)
+    away_team_rest = team_rest.rename({'team_rest': 'away_team_rest'}, axis=1)
+
+    # Convert data to same types
+    home_team_rest['game_id'] = home_team_rest['game_id'].astype('string')
+    home_team_rest['goalie_id'] = home_team_rest['goalie_id'].astype('string')
+    away_team_rest['game_id'] = away_team_rest['game_id'].astype('string')
+    away_team_rest['goalie_id'] = away_team_rest['goalie_id'].astype('string')
+
+    # Merge into main dataframe
+    games_df = pd.merge(games_df, home_team_rest, left_on=['game_id', 'home_goalie_id'],
+                            right_on=['game_id', 'goalie_id'], how='left')
+
+    games_df = pd.merge(games_df, away_team_rest, left_on=['game_id', 'away_goalie_id'],
+                            right_on=['game_id', 'goalie_id'], how='left')
+
+    # Drop some columns
+    games_df.drop(['goalie_id_x', 'goalie_id_y'], axis=1, inplace=True)
 
     return games_df
 
@@ -570,5 +624,7 @@ if __name__ == '__main__':
 
     # add goalie rest
     games_df = goalie_rest(goalies_df, games_df)
-    print(games_df.shape)
-    print(games_df)
+
+    # add team rest
+    games_df = team_rest(goalies_df, games_df)
+
