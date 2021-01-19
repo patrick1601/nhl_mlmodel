@@ -1,5 +1,6 @@
 
 from nhl_mlmodel.nhl_scraper import nhl_scraper
+from nhl_mlmodel.power_rankings import power_rankings
 from nhl_mlmodel.process_data import helpers
 import numpy as np
 import pandas as pd
@@ -9,6 +10,7 @@ from typing import List
 
 # show full columns on dfs
 pd.set_option('display.expand_frame_repr', False)
+pd.set_option("display.max_rows", 25)
 
 
 def pull_game_ids(first_year: int=2010, last_year: int=2020) -> List[int]:
@@ -530,6 +532,34 @@ def team_rest(goalies_df: pd.DataFrame, games_df: pd.DataFrame) -> pd.DataFrame:
 
     return games_df
 
+def rolling_win_percentage(games_df: pd.DataFrame, period: int) -> pd.DataFrame:
+    """
+    creates a moving average win percentage
+    ...
+
+    Parameters
+    ----------
+    games_df: pd.DataFrame
+        games dataframe
+    period: int
+        period for which we want to calculate win percentage
+
+    Returns
+    -------
+    games_df: pd.DataFrame
+        dataframe with rolling win percentage added
+    """
+    # Target Encoding, this will create a period SMA win percentage columns for the home and away teams
+    # todo double check this is calculating actual win percent and not just home/away win percent
+    column_names = ['home_win_percent_'+str(period)+'_avg','away_win_percent_'+str(period)+'_avg']
+
+    for x in column_names:
+        if x == 'home_win_percent_'+str(period)+'_avg':
+            games_df[x] = games_df.groupby('home_team')['home_team_win'].apply(lambda x: x.rolling(period).mean()).shift(1)
+        else:
+            games_df[x] = games_df.groupby('away_team')['home_team_win'].apply(lambda x: x.rolling(period).mean()).shift(1)
+    return games_df
+
 if __name__ == '__main__':
     # pull all game ids between 2010-2020
     if False:
@@ -627,4 +657,25 @@ if __name__ == '__main__':
 
     # add team rest
     games_df = team_rest(goalies_df, games_df)
+
+    # add power rankings
+    games_df = power_rankings.fast_elo_ratings(games_df)
+    games_df = power_rankings.slow_elo_ratings(games_df)
+    games_df = power_rankings.glicko(games_df)
+    games_df = power_rankings.trueskill(games_df)
+
+    # Add Win Percentage for last 10,20,41 and 82 games
+    days = [10, 20, 41, 82]
+
+    for d in days:
+        games_df = rolling_win_percentage(games_df, d)
+
+    # Remove rows with NaN due to our SMA calculation
+    games_df = games_df.dropna()  # Drop rows with missing values
+
+    print(games_df)
+
+    # Pickle and games_df for machine learning
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_df.pkl', 'wb') as f:
+        pickle.dump(games_df, f)
 
