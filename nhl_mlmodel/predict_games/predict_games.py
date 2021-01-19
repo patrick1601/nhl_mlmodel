@@ -1,106 +1,42 @@
 import json
-from nhl_mlmodel.nhl_scraper import nhl_scraper
-from nhl_mlmodel.power_rankings import power_rankings
+from nhl_mlmodel.predict_games import helpers
 from nhl_mlmodel.process_data import process_data
-from nhl_mlmodel.update_data import helpers
+from nhl_mlmodel.nhl_scraper import nhl_scraper
 import numpy as np
 import pandas as pd
 import pickle
 import requests
-import sys
 from typing import List
+import sys
 
-def update_game_ids(season: int, games_df: pd.DataFrame) -> List[int]:
-    """
-    retrieves game ids that have happened and are not in the main dataframe
-    ...
+# show full columns on dfs
+pd.set_option('display.expand_frame_repr', False)
+pd.set_option("display.max_rows", 25)
 
-    Parameters
-    ----------
-    season: int
-        season for which to search for new game ids (eg. 20202021)
-    games_df: pd.DataFrame
-        current games dataframe
+def main_get_predict_game_ids(date):
+    '''This function will get games for the date specified and append them to the end of our
+    dataframes. These games are games that have not yet happened and predictions for outcomes
+    will be made.
+    -------------
+    date - str date for the day you would like to predict games (eg. 2021-01-13)'''
 
-    Returns
-    -------
-    new_game_ids: List[int]
-        new game ids to be added
-    """
-    # get current game ids
-    current_game_ids = games_df['game_id'].tolist()
+    url = f"https://statsapi.web.nhl.com/api/v1/schedule?date={date}"
+    resp = requests.get(url)
+    raw_game_schedule = json.loads(resp.text)
 
-    # Retrieve all game_ids for the season
-    season_game_ids = nhl_scraper.get_game_ids(season)
+    predict_ids = [] # list that will hold game ids we want to predict
 
-    # Return new_game_ids which is a list of game ids that are currently not present
-    # in our game_ids list
-    new_game_ids = [list(set(season_game_ids).difference(current_game_ids))]
-    new_game_ids = new_game_ids[0]
-    new_game_ids = helpers.remove_duplicates(new_game_ids)
+    if raw_game_schedule['totalGames']==0:
+        print('No games to predict on this day')
 
-    # Delete game ids from list that have not been played yet
-    for id in new_game_ids:
-        # Retrieve date for id
-        url = f'https://statsapi.web.nhl.com/api/v1/game/{str(id)}/feed/live'
-        resp = requests.get(url)
-        json_data = json.loads(resp.text)
-        id_status = json_data['gameData']['status']['abstractGameState']
+    else:
+        for game in raw_game_schedule['dates'][0]['games']:
+            game_id = game['gamePk']
+            predict_ids.append(game_id)
 
-        # Delete if game if status is not Final
-        if id_status != 'Final':
-            new_game_ids = [x for x in new_game_ids if x != id]
-        else:
-            continue
+    return predict_ids
 
-    print(str(len(new_game_ids)) + ' game ids to update.')
-    print(new_game_ids)
-
-    return new_game_ids
-
-def pull_game_ids(first_year: int=2010, last_year: int=2020) -> List[int]:
-    """
-    pulls all nhl game ids between the specified dates
-    ...
-
-    Parameters
-    ----------
-    first_year: int
-        first year to retrieve game ids
-    last_year: int
-        last year to retrieve game ids
-
-    Returns
-    -------
-    game_ids: str
-        team abbreviation
-    """
-    years = list(range(first_year, last_year))  # Create list of years for which we want data
-
-    # Create year for the get_game_ids() function argument in the format 20192020
-    game_ids_url_years = []
-
-    for i in years:
-        j = str(i) + str(i + 1)
-        game_ids_url_years.append(j)
-
-    # Run for loop to retrieve game IDs for all seasons required
-    game_ids = []
-    for i in game_ids_url_years:
-
-        if len(game_ids) % 500 == 0:  # Progress bar
-            print(str(len(game_ids) / len(game_ids_url_years) * 100) + ' percent done retrieving game ids.')
-
-        try:
-            game_ids = game_ids + nhl_scraper.get_game_ids(i)
-
-        except KeyError:
-            print(str('*************Not able to retrieve: ' + str(i) + ' games due to KeyError************'))
-            continue
-
-    return game_ids
-
-def pull_team_stats(game_ids: List[int]) -> List[nhl_scraper.NhlTeam]:
+def pull_predict_team_stats(game_ids: List[int], string_date:str) -> List[nhl_scraper.NhlTeam]:
     """
     pulls all team stats for the provided game ids
     ...
@@ -120,7 +56,7 @@ def pull_team_stats(game_ids: List[int]) -> List[nhl_scraper.NhlTeam]:
     team_stats = []
 
     for i in game_ids:
-        stats_i = nhl_scraper.scrape_team_stats(i)
+        stats_i = nhl_scraper.scrape_prediction_team_stats(i,string_date)
         team_stats += stats_i
 
         if len(team_stats) % 500 == 0:  # Progress bar
@@ -128,7 +64,7 @@ def pull_team_stats(game_ids: List[int]) -> List[nhl_scraper.NhlTeam]:
 
     return team_stats
 
-def pull_goalie_stats(game_ids: List[int]) -> List[nhl_scraper.NhlGoalie]:
+def pull_predict_goalie_stats(game_ids: List[int], string_date:str) -> List[nhl_scraper.NhlGoalie]:
     """
         pulls all goalie stats for the provided game ids
         ...
@@ -146,7 +82,7 @@ def pull_goalie_stats(game_ids: List[int]) -> List[nhl_scraper.NhlGoalie]:
 
     goalie_stats=[]
     for i in game_ids:
-        goalies_i = nhl_scraper.scrape_goalie_stats(i)
+        goalies_i = nhl_scraper.scrape_prediction_goalie_stats(i, string_date)
         goalie_stats += goalies_i
 
         if len(goalie_stats) % 250 == 0:  # Progress bar # todo fix progress bar to account for more goalies than game ids
@@ -154,7 +90,7 @@ def pull_goalie_stats(game_ids: List[int]) -> List[nhl_scraper.NhlGoalie]:
 
     return goalie_stats
 
-def pull_game_info(game_ids: List[int]) -> List[nhl_scraper.NhlGame]:
+def pull_predict_game_info(game_ids: List[int], string_date:str) -> List[nhl_scraper.NhlGame]:
     """
     pulls all game_info for the provided game ids
     ...
@@ -163,6 +99,8 @@ def pull_game_info(game_ids: List[int]) -> List[nhl_scraper.NhlGame]:
     ----------
     game_ids: List[int]
         list of game ids to pull team stats for
+    string_date: str
+        date for which we are predicting game 01-25-2021
 
     Returns
     -------
@@ -174,7 +112,7 @@ def pull_game_info(game_ids: List[int]) -> List[nhl_scraper.NhlGame]:
     games_info = []
 
     for i in game_ids:
-        game_i = nhl_scraper.scrape_game_info(i)
+        game_i = nhl_scraper.scrape_prediction_game_info(i, string_date)
         games_info.append(game_i)
 
         if len(games_info) % 500 == 0:  # Progress bar
@@ -606,43 +544,37 @@ def rolling_win_percentage(games_df: pd.DataFrame, period: int) -> pd.DataFrame:
     return games_df
 
 if __name__ == '__main__':
-    # import games_df
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_df.pkl', 'rb') as f:
-        games_df = pickle.load(f)
+    predict_ids = main_get_predict_game_ids('2021-01-19') #####
 
-    new_game_ids = update_game_ids(20202021, games_df)
+    string_date = '01-19-2021' ########
 
-    # retrieve team game by game stats for all new game ids pulled
-    new_team_stats = process_data.pull_team_stats(new_game_ids)
+    # retrieve game by game information for all predict game ids pulled
+    predict_games_info = pull_predict_game_info(predict_ids, string_date)
 
-    # retrieve goalie game by game stats for all new game ids pulled
-    new_goalie_stats = process_data.pull_goalie_stats(new_game_ids)
+    # retrieve team game by game stats for all predict game ids pulled
+    predict_team_stats = pull_predict_team_stats(predict_ids, string_date)
 
-    # retrieve game by game information for all new game ids pulled
-    new_games_info = process_data.pull_game_info(new_game_ids)
+    # retrieve goalie game by game stats for all predict game ids pulled
+    predict_goalie_stats = pull_predict_goalie_stats(predict_ids, string_date)
 
-    # open old databases
+    # open databases
     with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_stats.pkl', 'rb') as f:
-        old_team_stats = pickle.load(f)
+        team_stats = pickle.load(f)
     with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'rb') as f:
-        old_goalie_stats = pickle.load(f)
+        goalie_stats = pickle.load(f)
     with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_info.pkl', 'rb') as f:
-        old_games_info = pickle.load(f)
+        games_info = pickle.load(f)
+    # append prediction games to end of information lists
+    team_stats = team_stats + predict_team_stats
+    goalie_stats = goalie_stats + predict_goalie_stats
+    games_info = games_info + predict_games_info
 
-    # combine new with old
-    team_stats_list = old_team_stats + new_team_stats
-    goalie_stats_list = old_goalie_stats + new_goalie_stats
-    games_list = old_games_info + new_games_info
+    # make dataframes games df
+    teams_df = make_teams_df(team_stats)
+    goalies_df = make_goalies_df(goalie_stats)
+    games_df = make_games_df(games_info)
 
     # process data
-    # make teams df
-    teams_df = make_teams_df(team_stats_list)
-
-    # make goalies df
-    goalies_df = make_goalies_df(goalie_stats_list)
-
-    # make games df
-    games_df = make_games_df(games_list)
 
     # convert to numerical
     teams_df, goalies_df = convert_numerical(teams_df, goalies_df)
@@ -666,6 +598,14 @@ if __name__ == '__main__':
     games_df['home_goalie_id'] = games_df['home_goalie_id'].map(str)
     games_df['away_goalie_id'] = games_df['away_goalie_id'].map(str)
 
+    # append games to predict to bottom of dataframe
+    games_df = games_df.append(predictions_df, ignore_index=True)
+
+    # reset indexes
+    games_df = games_df.reset_index(drop=True)
+    players_df = teams_df.reset_index(drop=True)
+    goalies_df = goalies_df.reset_index(drop=True)
+
     # create rolling stats in main games dataframe
 
     games_df = pd.merge(left=games_df, right=get_diff_df(teams_df, 'teams'),
@@ -676,47 +616,5 @@ if __name__ == '__main__':
     games_df = pd.merge(left=games_df, right=get_diff_df(goalies_df, 'goalies', is_goalie=True),
                   on='game_id', how='left')
 
-    # drop duplicates due to multiple goalies playing in one game
-    # todo confirm if the first or last game should be kept
-    games_df.drop_duplicates(subset=['game_id'], keep="last", inplace=True)
-
-    print(games_df.shape)
-
-    # impute skews
-    games_df = impute_skew(games_df)
-
-    # add goalie rest
-    games_df = goalie_rest(goalies_df, games_df)
-
-    # add team rest
-    games_df = team_rest(goalies_df, games_df)
-
-    # add power rankings
-    games_df = power_rankings.fast_elo_ratings(games_df)
-    games_df = power_rankings.slow_elo_ratings(games_df)
-    games_df = power_rankings.glicko(games_df)
-    games_df = power_rankings.trueskill(games_df)
-
-    # Add Win Percentage for last 10,20,41 and 82 games
-    days = [10, 20, 41, 82]
-
-    for d in days:
-        games_df = rolling_win_percentage(games_df, d)
-
-    # Remove rows with NaN due to our SMA calculation
-    games_df = games_df.dropna()  # Drop rows with missing values
-
-    games_df.reset_index(inplace=True, drop=True)
     print(games_df)
 
-    # Pickle and games_df for machine learning
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_df.pkl', 'wb') as f:
-        pickle.dump(games_df, f)
-
-    # update database pickle files
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_stats.pkl', 'wb') as f:
-        pickle.dump(team_stats_list, f)
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'wb') as f:
-        pickle.dump(goalie_stats_list, f)
-    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_info.pkl', 'wb') as f:
-        pickle.dump(games_list, f)

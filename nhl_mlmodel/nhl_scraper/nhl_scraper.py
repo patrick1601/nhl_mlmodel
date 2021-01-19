@@ -677,6 +677,206 @@ def scrape_game_info(game_id:int) -> NhlGame:
                         away_goalie_name=away_team_starting_goalie_name)
     return game_info
 
+def scrape_prediction_game_info(game_id:int, string_date:str) -> NhlGame:
+    """
+    returns an NhlGame object with parameters for the game_id provided for prediction use
+
+    refer to: https://github.com/dword4/nhlapi on how to use the NHL API
+
+    ...
+
+        Parameters
+        ----------
+        game_id: int
+            game id we are retrieving data for
+
+        Returns
+        -------
+        game: NhlGame
+            NhlGame object with info for the game_id provided
+    """
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
+    resp = session.get(url)
+    json_data = json.loads(resp.text)
+
+    # RETRIEVE INFO REQUIRED
+
+    # retrieve date and convert to date time
+    game_date: str = json_data['gameData']['datetime']['dateTime']
+    game_date = dt.datetime.strptime(game_date, '%Y-%m-%dT%H:%M:%SZ')
+
+    # Retrieve team names
+    home_team: str = json_data["liveData"]['boxscore']['teams']['home']['team']['abbreviation']
+    away_team: str = json_data["liveData"]['boxscore']['teams']['away']['team']['abbreviation']
+
+    # Retrieve starting goalie names
+    home_goalie_name, away_goalie_name = get_starting_goalies(home_team, away_team, string_date)
+
+    # Retrieve starting goalie ids
+    home_goalie_id = convert_player_to_id(home_team, home_goalie_name)
+    away_goalie_id = convert_player_to_id(away_team, away_goalie_name)
+
+    game_info = NhlGame(date=game_date, game_id=game_id, home_team=home_team, away_team=away_team,
+                        home_team_win=None, home_goalie_id=home_goalie_id, away_goalie_id=away_goalie_id,
+                        home_goalie_name=home_goalie_name, away_goalie_name=away_goalie_name)
+    return game_info
+
+def scrape_prediction_team_stats(game_id: int, string_date:str) -> List[NhlTeam]:
+    """
+        returns two entries in a List. The first entry is for the home team and the second is the away team.
+        Each entry represents 1 game that will be played
+
+        Refer to: https://github.com/dword4/nhlapi on how to use the NHL API
+
+        ...
+
+        Parameters
+        ----------
+        game_id: int
+            game id we are retrieving data for
+
+        Returns
+        -------
+        teams: List[NhlTeam]
+            list containing an entry for the home team and away team playing in the same game
+    """
+
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
+    resp = session.get(url)
+    json_data = json.loads(resp.text)
+
+    # RETRIEVE STATS REQUIRED
+
+    # retrieve date and convert to date time
+    game_date: str = json_data['gameData']['datetime']['dateTime']
+    game_date = dt.datetime.strptime(game_date, '%Y-%m-%dT%H:%M:%SZ')
+
+    # Retrieve team names
+    home_team: str = json_data["liveData"]['boxscore']['teams']['home']['team']['abbreviation']
+    away_team: str = json_data["liveData"]['boxscore']['teams']['away']['team']['abbreviation']
+
+    # Retrieve starting goalie names
+    home_goalie_name, away_goalie_name = get_starting_goalies(home_team, away_team, string_date)
+
+    # Retrieve starting goalie ids
+    home_goalie_id = convert_player_to_id(home_team, home_goalie_name)
+    away_goalie_id = convert_player_to_id(away_team, away_goalie_name)
+
+    # create NhlTeam objects for the home and away team
+    home_team_stats = NhlTeam(date=game_date, game_id=game_id,
+                              team=home_team, is_home_team=True, home_team_win=None,
+                              goals=None,
+                              pim=None, shots=None,
+                              powerPlayPercentage=None,
+                              powerPlayGoals=None,
+                              powerPlayOpportunities=None,
+                              faceOffWinPercentage=None,
+                              blocked=None,
+                              takeaways=None,
+                              giveaways=None,
+                              hits=None, goalie_id=home_goalie_id,
+                              goalie_name=home_goalie_name)
+
+    away_team_stats = NhlTeam(date=game_date, game_id=game_id,
+                              team=away_team, is_home_team=False, home_team_win=None,
+                              goals=None,
+                              pim=None, shots=None,
+                              powerPlayPercentage=None,
+                              powerPlayGoals=None,
+                              powerPlayOpportunities=None,
+                              faceOffWinPercentage=None,
+                              blocked=None,
+                              takeaways=None,
+                              giveaways=None,
+                              hits=None, goalie_id=away_goalie_id,
+                              goalie_name=away_goalie_name)
+
+    teams = [home_team_stats, away_team_stats]
+
+    return teams
+
+def scrape_prediction_goalie_stats(game_id: int, string_date:str) -> List[NhlGoalie]:
+    """
+        retrieves a list of NhlGoalie containing goalie stats for all goalies that played in the game
+        specified by game_id
+
+        Refer to: https://github.com/dword4/nhlapi on how to use the NHL API
+
+        ...
+
+        Parameters
+        ----------
+        game_id: int
+            game id we are retrieving data for
+
+        Returns
+        -------
+        team_stats: List[NhlTeam]
+            list containing an entry for the home team and away team playing in the same game
+        """
+    # backoff strategy to avoid maxretry errors
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
+    resp = session.get(url)
+    json_data = json.loads(resp.text)
+
+    # RETRIEVE STATS REQUIRED
+
+    # get date
+    game_date = json_data['gameData']['datetime']['dateTime']
+    game_date = dt.datetime.strptime(game_date, '%Y-%m-%dT%H:%M:%SZ')
+
+    # Get goalie team
+    home_goalie_team = json_data['gameData']['teams']['home']['abbreviation']
+    away_goalie_team = json_data['gameData']['teams']['away']['abbreviation']
+
+    # Retrieve starting goalie names
+    home_goalie_name, away_goalie_name = get_starting_goalies(home_goalie_team, away_goalie_team, string_date)
+
+    # Retrieve starting goalie ids
+    home_goalie_id = convert_player_to_id(home_goalie_team, home_goalie_name)
+    away_goalie_id = convert_player_to_id(away_goalie_team, away_goalie_name)
+
+    goalie_stats = NhlGoalie(date=game_date, game_id=game_id, team=home_goalie_team, is_home_team=True,
+                             goalie_name=home_goalie_name, goalie_id=home_goalie_id, timeOnIce=None,
+                             assists=None, goals=None, pim=None, shots=None, saves=None, powerPlaySaves=None,
+                             shortHandedSaves=None, evenSaves=None, shortHandedShotsAgainst=None,
+                             evenShotsAgainst=None, powerPlayShotsAgainst=None, decision=None,
+                             savePercentage= None, evenStrengthSavePercentage=None)
+    home_goalies = []
+    home_goalies.append(goalie_stats)
+
+    # away goalies
+    goalie_stats = NhlGoalie(date=game_date, game_id=game_id, team=away_goalie_team, is_home_team=False,
+                             goalie_name=away_goalie_name, goalie_id=away_goalie_id, timeOnIce=None,
+                             assists=None, goals=None, pim=None, shots=None, saves=None, powerPlaySaves=None,
+                             shortHandedSaves=None, evenSaves=None, shortHandedShotsAgainst=None,
+                             evenShotsAgainst=None, powerPlayShotsAgainst=None, decision=None,
+                             savePercentage=None, evenStrengthSavePercentage=None)
+    away_goalies = []
+    away_goalies.append(goalie_stats)
+
+    # Merge the two lists
+    goalie_stats = away_goalies + home_goalies
+
+    return goalie_stats
 
 def retrieve_team(game_id: int, home: bool) -> str:
     """
@@ -758,7 +958,6 @@ def get_starting_goalies(home_abv: str, away_abv: str, date: str) -> (str, str):
 
     # First define a dictionary to translate team abbreviations in our df to the team names used on daily
     # faceoff
-
     team_translations = {'MIN':'Minnesota Wild','TOR':'Toronto Maple Leafs',
                          'PIT':'Pittsburgh Penguins', 'COL':'Colorado Avalanche',
                          'EDM':'Edmonton Oilers', 'CAR':'Carolina Hurricanes',
@@ -844,6 +1043,78 @@ def convert_player_to_id(team_name: str, player_name: str):
             return p['person']['id']
         else:
             continue
+
+def get_starting_goalies(home_abv, away_abv, date):
+    """
+    gets starting goalies for a specific game on a date from dailyfaceoff.com
+
+    ...
+
+    Parameters
+    ----------
+    home_abv: str
+        abbreviation for the home team
+    away_abv: str
+        abbreviation for the away team
+    date: str
+        date game is played on (ex.01-13-2021)
+
+    Returns
+    -------
+    home_goalie: str
+        home_goalie name
+    away_goalie: str
+        away goalie name
+    """
+
+    # First define a dictionary to translate team abbreviations in our df to the team names used on daily
+    # faceoff
+
+    team_translations = {'MIN':'Minnesota Wild','TOR':'Toronto Maple Leafs',
+                         'PIT':'Pittsburgh Penguins', 'COL':'Colorado Avalanche',
+                         'EDM':'Edmonton Oilers', 'CAR':'Carolina Hurricanes',
+                         'CBJ':'Columbus Blue Jackets', 'NJD':'New Jersey Devils',
+                         'DET':'Detroit Red Wings', 'OTT':'Ottawa Senators',
+                         'BOS':'Boston Bruins', 'SJS':'San Jose Sharks',
+                         'BUF':'Buffalo Sabres','NYI':'New York Islanders',
+                         'WSH':'Washington Capitals','TBL':'Tampa Bay Lightning',
+                         'STL':'St Louis Blues', 'NSH':'Nashville Predators',
+                         'CHI':'Chicago Blackhawks', 'VAN':'Vancouver Canucks',
+                         'CGY':'Calgary Flames', 'PHI':'Philadelphia Flyers',
+                         'LAK':'Los Angeles Kings', 'MTL':'Montreal Canadiens',
+                         'ANA':'Anaheim Ducks', 'DAL':'Dallas Stars',
+                         'NYR':'New York Rangers', 'FLA':'Florida Panthers',
+                         'WPG':'Winnipeg Jets', 'ARI':'Arizona Coyotes',
+                         'VGK':'Vegas Golden Knights'}
+
+    home_team = team_translations[home_abv]
+    away_team = team_translations[away_abv]
+
+    url = f'https://www.dailyfaceoff.com/starting-goalies/{date}'
+
+    # Need headers as daily faceoff will block the get request without one
+    headers = {'User-Agent':'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.193 Safari/537.36'}
+    result = requests.get(url, headers=headers)
+
+    # Parse the data
+    src = result.content
+    soup = BeautifulSoup(src, 'lxml')
+
+    goalie_boxes = soup.find_all('div', {'class':'starting-goalies-card stat-card'})
+
+    # find the goalie box that contains the games we are looking for
+    for count, box in enumerate(goalie_boxes):
+        if home_team and away_team in box.text:
+            goalie_box = goalie_boxes[count]
+        else:
+            continue
+    # retrieve the h4 headings which contain the starting goalies
+    h4 = goalie_box.find_all('h4')
+    # Away goalie is at element 1 and home goalie is at element 2
+    away_goalie = h4[1].text
+    home_goalie = h4[2].text
+
+    return home_goalie, away_goalie
 
 if __name__ == '__main__':
     game_ids = get_game_ids(20192020)
