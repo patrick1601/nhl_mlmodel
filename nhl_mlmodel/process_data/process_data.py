@@ -5,7 +5,6 @@ from nhl_mlmodel.process_data import helpers
 import numpy as np
 import pandas as pd
 import pickle
-import sys
 from typing import List
 
 # show full columns on dfs
@@ -673,7 +672,7 @@ if __name__ == '__main__':
     # Remove rows with NaN due to our SMA calculation
     games_df = games_df.dropna()  # Drop rows with missing values
 
-    print(games_df)
+    games_df.reset_index(inplace=True, drop=True)
 
     # Pickle and games_df for machine learning
     with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_df.pkl', 'wb') as f:

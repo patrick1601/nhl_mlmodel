@@ -122,5 +122,8 @@ if __name__ == '__main__':
     accuracy, outcomes, predictions, probabilities = sportsbook_accuracy(games)
     data = [(outcomes, predictions, probabilities, 'Sportsbook')]
 
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/baseline.pkl', 'wb') as f:
+        pickle.dump((outcomes, predictions, probabilities), f)
+
     # create calibration curve and save figure in data folder
     cal_curve(data,15)
