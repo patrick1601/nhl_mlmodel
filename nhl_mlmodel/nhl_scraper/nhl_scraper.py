@@ -202,6 +202,29 @@ class NhlGoalie:
             'evenStrengthSavePercentage': self.evenStrengthSavePercentage
         }
 
+class NhlPlayer:
+    """
+        represents a game played by 1 player in the the NHL
+
+        ...
+
+        Parameters
+        ----------
+        player_name: str
+            player name
+        player_id: int
+            player id
+        """
+    def __init__(self, player_name: str, player_id: int):
+        self.player_name = player_name
+        self.player_id = player_id
+
+    def to_dict(self):
+        return {
+            'player_name' : self.player_name,
+            'player_id' : self.player_id
+        }
+
 class NhlGame:
     """
         represents a game played in the nhl
@@ -254,8 +277,6 @@ class NhlGame:
             'home_goalie_name': self.home_goalie_name,
             'away_goalie_name': self.away_goalie_name
         }
-
-#TEST
 
 def get_game_ids(season: int) -> List[int]:
     """
