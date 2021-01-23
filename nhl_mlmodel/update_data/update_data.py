@@ -707,4 +707,20 @@ if __name__ == '__main__':
     games_df = games_df.dropna()  # Drop rows with missing values
 
     games_df.reset_index(inplace=True, drop=True)
-    print(games_df)
+
+    # pickle files
+    # pickle object lists
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/team_stats.pkl', 'wb') as f:
+        pickle.dump(team_stats_list, f)
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalie_stats.pkl', 'wb') as f:
+        pickle.dump(goalie_stats_list, f)
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_info.pkl', 'wb') as f:
+        pickle.dump(games_list, f)
+
+    # Pickle and games_df for machine learning
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/teams_df.pkl', 'wb') as f:
+        pickle.dump(teams_df, f)
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/goalies_df.pkl', 'wb') as f:
+        pickle.dump(goalies_df, f)
+    with open('/Users/patrickpetanca/PycharmProjects/nhl_mlmodel/data/games_df.pkl', 'wb') as f:
+        pickle.dump(games_df, f)

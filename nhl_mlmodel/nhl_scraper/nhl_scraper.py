@@ -255,6 +255,8 @@ class NhlGame:
             'away_goalie_name': self.away_goalie_name
         }
 
+#TEST
+
 def get_game_ids(season: int) -> List[int]:
     """
     retrieves all of the gameids for the specified season
@@ -271,9 +273,15 @@ def get_game_ids(season: int) -> List[int]:
     game_ids: List[int]
         list of game ids for the specified season
     """
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
     season_str: str = str(season)
     url: str = f"https://statsapi.web.nhl.com/api/v1/schedule?season={season_str}&gameType=R"
-    resp = requests.get(url)
+    resp = session.get(url)
     raw_schedule = json.loads(resp.text)
     schedule = raw_schedule['dates']
     # Each entry in schedule is a day in the NHL. Each 'games' key contains all the games on that day.
@@ -997,7 +1005,9 @@ def get_starting_goalies(home_abv: str, away_abv: str, date: str) -> (str, str):
         else:
             continue
     # retrieve the h4 headings which contain the starting goalies
+
     h4 = goalie_box.find_all('h4')
+
     # Away goalie is at element 1 and home goalie is at element 2
     away_goalie = h4[1].text
     home_goalie = h4[2].text
