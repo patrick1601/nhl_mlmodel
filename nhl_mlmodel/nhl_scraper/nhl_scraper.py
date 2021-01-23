@@ -5,6 +5,7 @@ import json
 import requests
 from urllib3.util.retry import Retry
 from requests.adapters import HTTPAdapter
+import sys
 from typing import List
 
 class NhlTeam:
@@ -225,8 +226,14 @@ class NhlPlayer:
         position: str
             player position (LW, C, RW, D, G)
         """
-    def __init__(self, date: dt.datetime, game_id: int, team: str, is_home_team: bool,
-                 player_name: str, player_id: int, position:str):
+    def __init__(self, date: dt.datetime=None, game_id: int=None, team: str=None, is_home_team: bool=None,
+                 player_name: str=None, player_id: int=None, position: str=None, timeOnIce: str=None,
+                 assists: int=None, goals: int=None, shots: int=None, hits: int=None,
+                 powerPlayGoals: int=None, powerPlayAssists: int=None, penaltyMinutes: int=None,
+                 faceOffWins: int=None, faceoffTaken: int=None, takeaways: int=None,
+                 giveaways: int=None, shortHandedGoals: int=None, shortHandedAssists: int=None,
+                 blocked: int=None, plusMinus: int=None, evenTimeOnIce: str=None,
+                 powerPlayTimeOnIce: str=None, shortHandedTimeOnIce: str=None):
         self.date = date
         self.game_id = game_id
         self.team = team
@@ -476,21 +483,26 @@ def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
     home_team = json_data['gameData']['teams']['home']['abbreviation']
     away_team = json_data['gameData']['teams']['away']['abbreviation']
 
-    # get home players
-    home_players = json_data['liveData']['boxscore']['teams']['home']['players']
+    # get home player ids
+    player_ids = list(json_data['liveData']['boxscore']['teams']['home']['players'])
 
-    # do home players first
-    is_home_team = True
-
+    # scrape home players first
     players = []
 
-    for i in home_players:
-        player_id = i['person']['id']
-        player_name = i['person']['fullName']
-        position = i['position']['code']
-        stats = i['stats']['skaterStats']
+    for i in player_ids:
+        player_id = json_data['liveData']['boxscore']['teams']['home']['players'][i]['person']['id']
+        player_name = json_data['liveData']['boxscore']['teams']['home']['players'][i]['person']['fullName']
+        position = json_data['liveData']['boxscore']['teams']['home']['players'][i]['position']['code']
+        try: # skater stats will have a skaterStat key while goalie will have goalieStat and players who didn't play will have nothing
+            stats = json_data['liveData']['boxscore']['teams']['home']['players'][i]['stats']['skaterStats']
+        except:
+            pass
 
-        player = NhlPlayer()
+        print(stats)
+        sys.exit()
+
+        player = NhlPlayer(date=game_date, game_id=game_id, team=home_team, is_home_team=True,
+                           player_name=player_name, player_id=player_id, position=position)
 
 
 
