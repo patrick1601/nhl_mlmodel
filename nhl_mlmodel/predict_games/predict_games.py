@@ -579,9 +579,9 @@ def make_predictions(prediction_df: pd.DataFrame) -> pd.DataFrame:
     return(predict_df)
 
 if __name__ == '__main__':
-    predict_ids = main_get_predict_game_ids('2021-01-22') #####
+    predict_ids = main_get_predict_game_ids('2021-01-23') #####
 
-    string_date = '01-22-2021' ########
+    string_date = '01-23-2021' ########
 
     # retrieve game by game information for all predict game ids pulled
     predict_games_info = pull_predict_game_info(predict_ids, string_date)
