@@ -210,19 +210,40 @@ class NhlPlayer:
 
         Parameters
         ----------
+        date: dt.datetime
+            date on which the game was played
+        game_id: int
+            game id to identify the game
+        team: str
+            team abbreviation
+        is_home_team: boolean
+            True if team is home
         player_name: str
             player name
         player_id: int
             player id
+        position: str
+            player position (LW, C, RW, D, G)
         """
-    def __init__(self, player_name: str, player_id: int):
+    def __init__(self, date: dt.datetime, game_id: int, team: str, is_home_team: bool,
+                 player_name: str, player_id: int, position:str):
+        self.date = date
+        self.game_id = game_id
+        self.team = team
+        self.is_home_team = is_home_team
         self.player_name = player_name
         self.player_id = player_id
+        self.position = position
 
     def to_dict(self):
         return {
-            'player_name' : self.player_name,
-            'player_id' : self.player_id
+            'date': self.date,
+            'game_id': self.game_id,
+            'team': self.team,
+            'is_home_team': self.is_home_team,
+            'player_name': self.player_name,
+            'player_id': self.player_id,
+            'position': self.position
         }
 
 class NhlGame:
@@ -416,6 +437,63 @@ def scrape_team_stats(game_id: int) -> List[NhlTeam]:
 
     return teams
 
+def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
+    """
+    retrieves all player stats for the specified game_id
+
+    Refer to: https://gitlab.com/dword4/nhlapi on how to use the NHL API
+    ...
+
+    Parameters
+    ----------
+    game_id: int
+        game_id for which all player stats will be retrieved
+
+    Returns
+    -------
+    player_stats: List[NhlPlayer]
+        list containing all players playing in the provided game
+    """
+
+    # backoff strategy to avoid max retry errors
+    session = requests.Session()
+    retry = Retry(connect=3, backoff_factor=0.5)
+    adapter = HTTPAdapter(max_retries=retry)
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+
+    url = f'https://statsapi.web.nhl.com/api/v1/game/{str(game_id)}/feed/live'
+    resp = session.get(url)
+    json_data = json.loads(resp.text)
+
+    # RETRIEVE STATS REQUIRED
+
+    # get date
+    game_date = json_data['gameData']['datetime']['dateTime']
+    game_date = dt.datetime.strptime(game_date, '%Y-%m-%dT%H:%M:%SZ')
+
+    # get teams
+    home_team = json_data['gameData']['teams']['home']['abbreviation']
+    away_team = json_data['gameData']['teams']['away']['abbreviation']
+
+    # get home players
+    home_players = json_data['liveData']['boxscore']['teams']['home']['players']
+
+    # do home players first
+    is_home_team = True
+
+    players = []
+
+    for i in home_players:
+        player_id = i['person']['id']
+        player_name = i['person']['fullName']
+        position = i['position']['code']
+        stats = i['stats']['skaterStats']
+
+        player = NhlPlayer()
+
+
+
 def scrape_goalie_stats(game_id: int) -> List[NhlGoalie]:
     """
         retrieves a list of NhlGoalie containing goalie stats for all goalies that played in the game
@@ -435,7 +513,7 @@ def scrape_goalie_stats(game_id: int) -> List[NhlGoalie]:
         team_stats: List[NhlTeam]
             list containing an entry for the home team and away team playing in the same game
         """
-    # backoff strategy to avoid maxretry errors
+    # backoff strategy to avoid max retry errors
     session = requests.Session()
     retry = Retry(connect=3, backoff_factor=0.5)
     adapter = HTTPAdapter(max_retries=retry)
@@ -1149,9 +1227,10 @@ def get_starting_goalies(home_abv, away_abv, date):
 
 if __name__ == '__main__':
     game_ids = get_game_ids(20192020)
-    scrape_team_stats(game_ids[0])
-    scrape_goalie_stats(game_ids[13])
-    retrieve_team(game_ids[13],home=False)
-    retrieve_date(game_ids[13])
-    get_starting_goalies('FLA', 'CHI', '01-17-2021')
-    convert_player_to_id('BUF', 'Taylor Hall')
+    #scrape_team_stats(game_ids[0])
+    #scrape_goalie_stats(game_ids[13])
+    scrape_player_stats(game_ids[13])
+    #retrieve_team(game_ids[13],home=False)
+    #retrieve_date(game_ids[13])
+    #get_starting_goalies('FLA', 'CHI', '01-17-2021')
+    #convert_player_to_id('BUF', 'Taylor Hall')
