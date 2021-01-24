@@ -486,7 +486,7 @@ def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
     # get home player ids
     player_ids = list(json_data['liveData']['boxscore']['teams']['home']['players'])
 
-    # scrape home players first
+    # scrape home players
     players = []
 
     for i in player_ids:
@@ -495,14 +495,39 @@ def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
         position = json_data['liveData']['boxscore']['teams']['home']['players'][i]['position']['code']
         try: # skater stats will have a skaterStat key while goalie will have goalieStat and players who didn't play will have nothing
             stats = json_data['liveData']['boxscore']['teams']['home']['players'][i]['stats']['skaterStats']
-        except:
+            timeOnIce = stats['timeOnIce']
+            assists = stats['assists']
+            goals = stats['goals']
+            shots = stats['shots']
+            hits = stats['hits']
+            powerPlayGoals = stats['powerPlayGoals']
+            powerPlayAssists = stats['powerPlayAssists']
+            penaltyMinutes = stats['penaltyMinutes']
+            faceOffWins = stats['faceOffWins']
+            faceoffTaken = stats['faceoffTaken']
+            takeaways = stats['takeaways']
+            giveaways = stats['giveaways']
+            shortHandedGoals = stats['shortHandedGoals']
+            shortHandedAssists = stats['shortHandedAssists']
+            blocked = stats['blocked']
+            plusMinus = stats['plusMinus']
+            evenTimeOnIce = stats['evenTimeOnIce']
+            powerPlayTimeOnIce = stats['powerPlayTimeOnIce']
+            shortHandedTimeOnIce = stats['shortHandedTimeOnIce']
+
+            player = NhlPlayer(date=game_date, game_id=game_id, team=home_team, is_home_team=True,
+                               player_name=player_name, player_id=player_id, position=position,
+                               timeOnIce=timeOnIce, assists=assists, goals=goals, shots=shots,
+                               hits=hits, powerPlayGoals=powerPlayGoals, powerPlayAssists=powerPlayAssists,
+                               penaltyMinutes=penaltyMinutes, faceOffWins=faceOffWins, faceoffTaken=faceoffTaken,
+                               takeaways=takeaways, giveaways=giveaways, shortHandedGoals=shortHandedGoals,
+                               shortHandedAssists=shortHandedAssists, blocked=blocked, plusMinus=plusMinus,
+                               evenTimeOnIce=evenTimeOnIce, powerPlayTimeOnIce=powerPlayTimeOnIce,
+                               shortHandedTimeOnIce=shortHandedTimeOnIce)
+            players.append(player)
+
+        except KeyError:
             pass
-
-        print(stats)
-        sys.exit()
-
-        player = NhlPlayer(date=game_date, game_id=game_id, team=home_team, is_home_team=True,
-                           player_name=player_name, player_id=player_id, position=position)
 
 
 
