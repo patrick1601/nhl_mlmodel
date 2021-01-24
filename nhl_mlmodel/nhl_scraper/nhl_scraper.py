@@ -493,7 +493,7 @@ def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
         player_id = json_data['liveData']['boxscore']['teams']['home']['players'][i]['person']['id']
         player_name = json_data['liveData']['boxscore']['teams']['home']['players'][i]['person']['fullName']
         position = json_data['liveData']['boxscore']['teams']['home']['players'][i]['position']['code']
-        try: # skater stats will have a skaterStat key while goalie will have goalieStat and players who didn't play will have nothing
+        try:# skater stats will have a skaterStat key while goalie will have goalieStat and players who didn't play will have nothing
             stats = json_data['liveData']['boxscore']['teams']['home']['players'][i]['stats']['skaterStats']
             timeOnIce = stats['timeOnIce']
             assists = stats['assists']
@@ -528,6 +528,7 @@ def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
 
         except KeyError:
             pass
+    #todo add away team
 
 
 
