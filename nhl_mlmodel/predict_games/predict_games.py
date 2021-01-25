@@ -579,9 +579,9 @@ def make_predictions(prediction_df: pd.DataFrame) -> pd.DataFrame:
     return(predict_df)
 
 if __name__ == '__main__':
-    predict_ids = main_get_predict_game_ids('2021-01-23') #####
+    predict_ids = main_get_predict_game_ids('2021-01-24') #####
 
-    string_date = '01-23-2021' ########
+    string_date = '01-24-2021' ########
 
     # retrieve game by game information for all predict game ids pulled
     predict_games_info = pull_predict_game_info(predict_ids, string_date)
@@ -608,6 +608,7 @@ if __name__ == '__main__':
     teams_df = make_teams_df(team_stats)
     goalies_df = make_goalies_df(goalie_stats)
     games_df = make_games_df(games_info)
+    print(games_df)
 
     # If it cannot find a goalie id replace the id with 0
     games_df['home_goalie_id'].fillna(value=0, inplace=True)

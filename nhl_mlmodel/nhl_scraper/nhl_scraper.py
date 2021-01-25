@@ -230,7 +230,7 @@ class NhlPlayer:
                  player_name: str=None, player_id: int=None, position: str=None, timeOnIce: str=None,
                  assists: int=None, goals: int=None, shots: int=None, hits: int=None,
                  powerPlayGoals: int=None, powerPlayAssists: int=None, penaltyMinutes: int=None,
-                 faceOffWins: int=None, faceoffTaken: int=None, takeaways: int=None,
+                 faceOffWins: int=None, faceOffTaken: int=None, takeaways: int=None,
                  giveaways: int=None, shortHandedGoals: int=None, shortHandedAssists: int=None,
                  blocked: int=None, plusMinus: int=None, evenTimeOnIce: str=None,
                  powerPlayTimeOnIce: str=None, shortHandedTimeOnIce: str=None):
@@ -241,6 +241,25 @@ class NhlPlayer:
         self.player_name = player_name
         self.player_id = player_id
         self.position = position
+        self.timeOnIce = timeOnIce
+        self.assists = assists
+        self.goals = goals
+        self.shots = shots
+        self.hits = hits
+        self.powerPlayGoals = powerPlayGoals
+        self.powerPlayAssists = powerPlayAssists
+        self.penaltyMinutes = penaltyMinutes
+        self.faceOffWins = faceOffWins
+        self.faceOffTaken = faceOffTaken
+        self.takeaways = takeaways
+        self.giveaways = giveaways
+        self.shortHandedGoals = shortHandedGoals
+        self.shortHandedAssists = shortHandedAssists
+        self.blocked = blocked
+        self.plusMinus = plusMinus
+        self.evenTimeOnIce = evenTimeOnIce
+        self.powerPlayTimeOnIce = powerPlayTimeOnIce
+        self.shortHandedTimeOnIce = shortHandedTimeOnIce
 
     def to_dict(self):
         return {
