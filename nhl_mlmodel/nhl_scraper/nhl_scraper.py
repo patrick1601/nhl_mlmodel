@@ -467,7 +467,7 @@ def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
     """
     retrieves all player stats for the specified game_id
 
-    Refer to: https://gitlab.com/dword4/nhlapi on how to use the NHL API
+    Refer to: https://gitlab.com/dword4/nhlapi for NHL API documentation
     ...
 
     Parameters
@@ -502,6 +502,7 @@ def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
     home_team = json_data['gameData']['teams']['home']['abbreviation']
     away_team = json_data['gameData']['teams']['away']['abbreviation']
 
+    # HOME TEAM
     # get home player ids
     player_ids = list(json_data['liveData']['boxscore']['teams']['home']['players'])
 
@@ -512,7 +513,9 @@ def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
         player_id = json_data['liveData']['boxscore']['teams']['home']['players'][i]['person']['id']
         player_name = json_data['liveData']['boxscore']['teams']['home']['players'][i]['person']['fullName']
         position = json_data['liveData']['boxscore']['teams']['home']['players'][i]['position']['code']
-        try:# skater stats will have a skaterStat key while goalie will have goalieStat and players who didn't play will have nothing
+        # skater stats will have a skaterStat key while goalie will have goalieStat and players who didn't
+        # play will have nothing. try and see if there is a skaterStats if not pass.
+        try:
             stats = json_data['liveData']['boxscore']['teams']['home']['players'][i]['stats']['skaterStats']
             timeOnIce = stats['timeOnIce']
             assists = stats['assists']
@@ -547,9 +550,8 @@ def scrape_player_stats(game_id: int) -> List[NhlPlayer]:
 
         except KeyError:
             pass
+
     #todo add away team
-
-
 
 def scrape_goalie_stats(game_id: int) -> List[NhlGoalie]:
     """
